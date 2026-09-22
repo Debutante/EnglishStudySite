@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORIES, slugify, splitContent, draftFromArticle, emptyDraft, draftToPayload } from './admin-model.mjs';
+import { DEFAULT_CATEGORIES, slugify, splitContent, draftFromArticle, emptyDraft, draftToPayload, draftFromFormValues } from './admin-model.mjs';
 const ADMIN_KEY = 'jenglish-admin-key';
 const fallbackCover = '/assets/thumb-technology.svg';
 
@@ -34,7 +34,7 @@ function renderEditor(){
   const content=(d.paragraphs||[]).map(p=>p.join(' ')).join('\n\n');
   const tags=(d.tags||[]).join(', ');
   const knownCategory=state.categories.some(c=>c.name===d.category);
-  return `<div class="panel-head" style="margin:-20px -20px 18px"><strong>${d.status==='draft'?'编辑草稿':'编辑文章'}</strong><span class="status ${esc(d.status)}">${esc(d.status)}</span></div><div class="field-grid"><div class="field"><label>Title</label><input id="f-title" value="${esc(d.title)}" autocomplete="off"></div><div class="field"><label>Slug（自动生成）</label><input id="f-slug" value="${esc(slugify(d.title))}" readonly aria-readonly="true"><small class="note">Slug 始终根据标题自动生成；保存时服务器也会重新生成。</small></div><div class="field"><label>Subtitle</label><input id="f-subtitle" value="${esc(d.dek)}"></div><div class="field"><label>Level</label><input id="f-level" value="${esc(d.level)}"></div><div class="field"><label>Category</label><select id="f-category-select">${state.categories.map(c=>`<option value="${esc(c.name)}" ${knownCategory && d.category===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}<option value="__other__" ${!knownCategory?'selected':''}>Other</option></select><input id="f-category-other" value="${esc(!knownCategory?d.category:'')}" placeholder="Enter another category" style="display:${!knownCategory?'block':'none'}"></div><div class="field"><label>Status</label><select id="f-status"><option value="draft" ${d.status==='draft'?'selected':''}>draft</option><option value="review" ${d.status==='review'?'selected':''}>review</option><option value="published" ${d.status==='published'?'selected':''}>published</option><option value="archived" ${d.status==='archived'?'selected':''}>archived</option></select></div><div class="field"><label>Reading time</label><input id="f-reading" type="number" min="1" value="${Number(d.readingTime||5)}"></div><div class="field"><label>Tags</label><input id="f-tags" value="${esc(tags)}" placeholder="AI, work, productivity"></div><div class="field full"><label>Cover image URL</label><input id="f-cover" value="${esc(d.coverImageUrl)}" placeholder="自动生成，无需填写"></div><div class="field full"><label>Article content · separate paragraphs with a blank line</label><textarea id="f-content">${esc(content)}</textarea></div></div><div class="editor-actions"><button class="btn primary" id="save-article" ${state.saving?'disabled':''}>${state.saving?'保存中…':'保存草稿'}</button>${d.slug?'<button class="btn accent" id="publish-article">发布</button>':''}<button class="btn" id="generate-cover" ${d.slug?'':'disabled'}>根据文章内容生成封面</button><button class="btn" id="translate-article" ${d.slug?'':'disabled'}>生成中文翻译</button><button class="btn" id="pack-ai" ${d.slug?'':'disabled'}>生成全部句子学习内容</button></div><section class="generation"><h2>AI 生成</h2><p class="note">生成结果保存在当前文章版本中。文章封面会根据标题、分类、标签和正文关键词生成；中文翻译和句子学习内容会被阅读器复用。</p><div class="generation-grid"><button class="generation-card" id="open-reader" ${d.slug?'':'disabled'}><strong>打开阅读器</strong><small>${d.slug?`/ai/te/${esc(d.slug)}`:'保存后可打开'}</small></button><button class="generation-card" id="refresh-article" ${d.slug?'':'disabled'}><strong>刷新文章</strong><small>重新读取数据库中的最新版本</small></button></div></section>`;
+  return `<form id="article-form" novalidate><div class="panel-head" style="margin:-20px -20px 18px"><strong>${d.status==='draft'?'编辑草稿':'编辑文章'}</strong><span class="status ${esc(d.status)}">${esc(d.status)}</span></div><div class="field-grid"><div class="field"><label>Title</label><input id="f-title" name="title" value="${esc(d.title)}" autocomplete="off"></div><div class="field"><label>Slug（自动生成）</label><input id="f-slug" value="${esc(slugify(d.title))}" readonly aria-readonly="true"><small class="note">Slug 始终根据标题自动生成；保存时服务器也会重新生成。</small></div><div class="field"><label>Subtitle</label><input id="f-subtitle" name="subtitle" value="${esc(d.dek)}"></div><div class="field"><label>Level</label><input id="f-level" name="level" value="${esc(d.level)}"></div><div class="field"><label>Category</label><select id="f-category-select" name="categoryChoice">${state.categories.map(c=>`<option value="${esc(c.name)}" ${knownCategory && d.category===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}<option value="__other__" ${!knownCategory?'selected':''}>Other</option></select><input id="f-category-other" name="categoryOther" value="${esc(!knownCategory?d.category:'')}" placeholder="Enter another category" style="display:${!knownCategory?'block':'none'}"></div><div class="field"><label>Status</label><select id="f-status" name="status"><option value="draft" ${d.status==='draft'?'selected':''}>draft</option><option value="review" ${d.status==='review'?'selected':''}>review</option><option value="published" ${d.status==='published'?'selected':''}>published</option><option value="archived" ${d.status==='archived'?'selected':''}>archived</option></select></div><div class="field"><label>Reading time</label><input id="f-reading" name="readingTime" type="number" min="1" value="${Number(d.readingTime||5)}"></div><div class="field"><label>Tags</label><input id="f-tags" name="tags" value="${esc(tags)}" placeholder="AI, work, productivity"></div><div class="field full"><label>Cover image URL</label><input id="f-cover" name="coverImageUrl" value="${esc(d.coverImageUrl)}" placeholder="自动生成，无需填写"></div><div class="field full"><label>Article content · separate paragraphs with a blank line</label><textarea id="f-content" name="content">${esc(content)}</textarea></div></div><div class="editor-actions"><button class="btn primary" type="submit" id="save-article" ${state.saving?'disabled':''}>${state.saving?'保存中…':'保存草稿'}</button>${d.slug?'<button type="button" class="btn accent" id="publish-article">发布</button>':''}<button type="button" class="btn" id="generate-cover" ${d.slug?'':'disabled'}>根据文章内容生成封面</button><button type="button" class="btn" id="translate-article" ${d.slug?'':'disabled'}>生成中文翻译</button><button type="button" class="btn" id="pack-ai" ${d.slug?'':'disabled'}>生成全部句子学习内容</button></div><section class="generation"><h2>AI 生成</h2><p class="note">生成结果保存在当前文章版本中。文章封面会根据标题、分类、标签和正文关键词生成；中文翻译和句子学习内容会被阅读器复用。</p><div class="generation-grid"><button class="generation-card" id="open-reader" ${d.slug?'':'disabled'}><strong>打开阅读器</strong><small>${d.slug?`/ai/te/${esc(d.slug)}`:'保存后可打开'}</small></button><button class="generation-card" id="refresh-article" ${d.slug?'':'disabled'}><strong>刷新文章</strong><small>重新读取数据库中的最新版本</small></button></div></section></form>`;
 }
 async function loadArticles(){
   const d=await api(`/api/admin/articles${state.filter?`?status=${encodeURIComponent(state.filter)}`:''}`);
@@ -65,24 +65,37 @@ function updateCategory(){
   state.draft ||= emptyDraft();
   state.draft.category=isOther?(other?.value.trim()||'Other'):select.value;
 }
-async function saveArticle(){
+async function saveArticle(event){
+  event?.preventDefault?.();
   state.error='';
+  const form=document.querySelector('#article-form');
+  if(!form) { state.error='保存表单尚未加载，请刷新页面后重试。'; render(); return; }
   try {
-    // Read the current DOM once, then persist it in state before any render happens.
-    ['f-title','f-subtitle','f-level','f-status','f-reading','f-tags','f-cover','f-content'].forEach(id=>{
-      const el=document.querySelector(`#${id}`); if(el) updateDraftFromField(id, el.value);
+    const fd=new FormData(form);
+    const formDraft=draftFromFormValues({
+      title:fd.get('title'), subtitle:fd.get('subtitle'), level:fd.get('level'),
+      categoryChoice:fd.get('categoryChoice'), categoryOther:fd.get('categoryOther'),
+      status:fd.get('status'), readingTime:fd.get('readingTime'), tags:fd.get('tags'),
+      coverImageUrl:fd.get('coverImageUrl'), content:fd.get('content'),
     });
-    updateCategory();
-    const body=draftToPayload(state.draft);
-    state.saving=true; render();
-    const endpoint=state.selected?.slug ? `/api/admin/articles/${encodeURIComponent(state.selected.slug)}` : '/api/admin/articles';
-    const d=await api(endpoint,{method:state.selected?.slug?'PATCH':'POST',body:JSON.stringify(body)});
-    state.selected=d.article; state.draft=draftFromArticle(d.article);
-    await loadArticles();
-    toast('草稿已保存');
+    const body=draftToPayload(formDraft);
+    state.draft={...state.draft,...formDraft};
+    state.saving=true;
     render();
-  } catch(e){ state.error=e.message; render(); }
-  finally { state.saving=false; }
+    const endpoint=state.selected?.id ? `/api/admin/articles/${encodeURIComponent(state.selected.slug)}` : '/api/admin/articles';
+    const method=state.selected?.id ? 'PATCH' : 'POST';
+    const d=await api(endpoint,{method,body:JSON.stringify(body)});
+    state.selected=d.article;
+    state.draft=draftFromArticle(d.article);
+    await loadArticles();
+    state.saving=false;
+    render();
+    toast('草稿已保存');
+  } catch(e){
+    state.saving=false;
+    state.error=e.message;
+    render();
+  }
 }
 async function publish(){state.error='';try{if(!state.selected?.slug)throw new Error('请先保存草稿，再发布。');const d=await api(`/api/admin/articles/${encodeURIComponent(state.selected.slug)}/publish`,{method:'POST'});state.selected=d.article;state.draft=draftFromArticle(d.article);await loadArticles();render();toast('文章已发布');}catch(e){state.error=e.message;render();}}
 async function generateCover(){
@@ -108,7 +121,7 @@ function bind(){
   document.querySelector('#f-category-select')?.addEventListener('change', updateCategory);
   document.querySelector('#f-category-other')?.addEventListener('input', updateCategory);
   document.querySelector('#f-title')?.addEventListener('input',e=>{const slug=document.querySelector('#f-slug');if(slug)slug.value=slugify(e.currentTarget.value);});
-  document.querySelector('#save-article')?.addEventListener('click',saveArticle);
+  document.querySelector('#article-form')?.addEventListener('submit',saveArticle);
   document.querySelector('#publish-article')?.addEventListener('click',publish);
   document.querySelector('#generate-cover')?.addEventListener('click',generateCover);
   document.querySelector('#translate-article')?.addEventListener('click',()=>generate('article_translate'));

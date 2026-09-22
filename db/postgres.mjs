@@ -365,8 +365,15 @@ async function uniqueSlug(client, baseSlug, existingId = null) {
   }
 }
 
+export function normalizeAdminArticleInput(input) {
+  if (!input || typeof input !== 'object') throw new Error('Invalid article payload.');
+  if (input.article && typeof input.article === 'object') return input.article;
+  if (input.data && typeof input.data === 'object') return input.data;
+  return input;
+}
+
 export async function createArticle(input) {
-  return saveArticle(null, input);
+  return saveArticle(null, normalizeAdminArticleInput(input));
 }
 
 export async function updateArticleBySlug(slug, input) {
@@ -376,25 +383,26 @@ export async function updateArticleBySlug(slug, input) {
 }
 
 async function saveArticle(existing, input) {
-  const title = String(input.title || '').trim();
-  const subtitle = String(input.subtitle ?? input.dek ?? '').trim();
-  const level = String(input.level || 'Upper intermediate').trim();
-  const readingTime = Math.max(1, Number(input.readingTime || input.reading_time_minutes || 1));
-  const status = ['draft', 'review', 'published', 'archived'].includes(input.status) ? input.status : (existing?.status || 'draft');
-  const language = String(input.language || 'en').slice(0, 20);
-  const sourceName = String(input.sourceName || 'JEnglish').trim();
-  const sourceUrl = String(input.sourceUrl || '').trim() || null;
-  const copyrightNote = String(input.copyrightNote || '').trim() || null;
-  const coverImageUrl = String(input.coverImageUrl || '').trim() || null;
-  const tags = Array.isArray(input.tags) ? input.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 20) : [];
-  const paragraphs = Array.isArray(input.paragraphs) ? input.paragraphs : [];
+  const rawInput = normalizeAdminArticleInput(input);
+  const title = String(rawInput.title ?? rawInput.name ?? rawInput.headline ?? '').trim();
+  const subtitle = String(rawInput.subtitle ?? rawInput.dek ?? '').trim();
+  const level = String(rawInput.level || 'Upper intermediate').trim();
+  const readingTime = Math.max(1, Number(rawInput.readingTime || rawInput.reading_time_minutes || 1));
+  const status = ['draft', 'review', 'published', 'archived'].includes(rawInput.status) ? rawInput.status : (existing?.status || 'draft');
+  const language = String(rawInput.language || 'en').slice(0, 20);
+  const sourceName = String(rawInput.sourceName || 'JEnglish').trim();
+  const sourceUrl = String(rawInput.sourceUrl || '').trim() || null;
+  const copyrightNote = String(rawInput.copyrightNote || '').trim() || null;
+  const coverImageUrl = String(rawInput.coverImageUrl || '').trim() || null;
+  const tags = Array.isArray(rawInput.tags) ? rawInput.tags.map((x) => String(x).trim()).filter(Boolean).slice(0, 20) : [];
+  const paragraphs = Array.isArray(rawInput.paragraphs) ? rawInput.paragraphs : [];
   if (!title) throw new Error('Title is required.');
   if (!paragraphs.length) throw new Error('At least one paragraph is required.');
 
   return withTransaction(async (client) => {
     const slug = await uniqueSlug(client, title, existing?.id ?? null);
-    const categorySlug = normalizeSlug(input.categorySlug || input.category || 'general') || 'general';
-    const categoryName = String(input.categoryName || input.category || categorySlug).trim();
+    const categorySlug = normalizeSlug(rawInput.categorySlug || rawInput.category || 'general') || 'general';
+    const categoryName = String(rawInput.categoryName || rawInput.category || categorySlug).trim();
     const categoryResult = await client.query(`
       INSERT INTO categories(slug, name, description)
       VALUES ($1, $2, $3)

@@ -21,6 +21,7 @@ import {
   publishArticle,
   upsertAiGeneration,
   setArticleCoverBySlug,
+  normalizeAdminArticleInput,
 } from './db/postgres.mjs';
 
 const PORT = Number(process.env.PORT || 4173);
@@ -221,7 +222,7 @@ async function handleAdmin(req, res, parts, url) {
   }
 
   if (req.method === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts[3] === 'save' && parts.length === 4) {
-    const body = await readJsonBody(req);
+    const body = normalizeAdminArticleInput(await readJsonBody(req));
     const result = await createArticle(body);
     let article = await getAdminArticleBySlug(result.slug);
     article = await ensureGeneratedCover(article);
@@ -237,7 +238,7 @@ async function handleAdmin(req, res, parts, url) {
     }
 
     if ((req.method === 'PATCH' || req.method === 'POST') && parts.length === 4) {
-      const body = await readJsonBody(req);
+      const body = normalizeAdminArticleInput(await readJsonBody(req));
       const result = await updateArticleBySlug(slug, body);
       if (!result) return json(res, 404, { error: 'Article not found.' });
       let article = await getAdminArticleBySlug(result.slug);
@@ -246,7 +247,7 @@ async function handleAdmin(req, res, parts, url) {
     }
 
     if (req.method === 'POST' && parts[4] === 'save' && parts.length === 5) {
-      const body = await readJsonBody(req);
+      const body = normalizeAdminArticleInput(await readJsonBody(req));
       const result = await updateArticleBySlug(slug, body);
       if (!result) return json(res, 404, { error: 'Article not found.' });
       let article = await getAdminArticleBySlug(result.slug);
@@ -322,7 +323,7 @@ async function handleAdmin(req, res, parts, url) {
   }
 
   if (req.method === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts.length === 3) {
-    const body = await readJsonBody(req);
+    const body = normalizeAdminArticleInput(await readJsonBody(req));
     const result = await createArticle(body);
     let article = await getAdminArticleBySlug(result.slug);
     article = await ensureGeneratedCover(article);

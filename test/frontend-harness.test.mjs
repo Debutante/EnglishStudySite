@@ -58,7 +58,7 @@ async function boot() {
     setTimeout, clearTimeout, setInterval, clearInterval, performance,
     requestAnimationFrame:(fn)=>{ const id=++rafId; rafCallbacks.set(id,fn); return id; },
     cancelAnimationFrame:(id)=>rafCallbacks.delete(id),
-    speechSynthesis:{speaking:false,cancel(){this.speaking=false;},speak(){this.speaking=true;}},
+    speechSynthesis:{speaking:false,paused:false,cancel(){this.speaking=false;this.paused=false;},speak(){this.speaking=true;this.paused=false;},pause(){this.paused=true;},resume(){this.paused=false;}},
     SpeechSynthesisUtterance: class { constructor(text){this.text=text;} },
   };
   context.window = context;
@@ -71,6 +71,7 @@ async function boot() {
     globalThis.__switchLanguage = (lang) => selectContentLanguage(lang);
     globalThis.__runAction = (mode) => runAi(mode);
     globalThis.__startSpeech = () => toggleSpeech();
+    globalThis.__toggleSpeech = () => toggleSpeech();
     globalThis.__setNow = (n) => { globalThis.__testNow = n; };
     globalThis.__bootPromise = (async () => { await new Promise(r => setTimeout(r, 10)); return __stateSnapshot(); })();
   `;
@@ -122,16 +123,28 @@ test('all six AI assistant actions call the API and render a response', async ()
   assert.equal(fetchLog.filter(x=>x.url==='/api/ai').length, 6);
 });
 
-test('sentence playback moves the progress dot while speech is active', async () => {
+test('sentence playback pauses and resumes from the paused position', async () => {
   const {context, root, rafCallbacks} = await boot();
   await context.__setSelected();
-  context.speechSynthesis.speaking = false;
   context.__setNow(0);
   context.__startSpeech();
   assert.equal((await context.__stateSnapshot()).speechPlaying, true);
-  let firstCallback = [...rafCallbacks.values()][0];
+  let callback = [...rafCallbacks.values()][0];
   context.__setNow(1000);
-  firstCallback();
-  const left = Number.parseFloat(root.querySelector?.('.audio-progress-thumb')?.style?.left || context.document?.querySelector?.('.audio-progress-thumb')?.style?.left || '0');
-  assert.ok(left > 0, `expected moving dot, got ${left}`);
+  callback();
+  const firstLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  assert.ok(firstLeft > 0, `expected moving dot, got ${firstLeft}`);
+  context.__setNow(1400);
+  context.__toggleSpeech();
+  assert.equal((await context.__stateSnapshot()).speechPlaying, false);
+  assert.equal(context.speechSynthesis.paused, true);
+  const pausedLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  context.__setNow(5000);
+  for (const cb of [...rafCallbacks.values()]) cb();
+  const stillPausedLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  assert.equal(stillPausedLeft, pausedLeft);
+  context.__toggleSpeech();
+  assert.equal((await context.__stateSnapshot()).speechPlaying, true);
+  assert.equal(context.speechSynthesis.paused, false);
+  assert.ok(Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0') >= pausedLeft);
 });

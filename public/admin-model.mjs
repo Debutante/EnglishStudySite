@@ -40,18 +40,18 @@ export function emptyDraft(){
 }
 
 export function draftToPayload(draft){
-  const title=String(draft?.title||'').trim();
-  if(!title) throw new Error('Title is required. Please enter a title before saving.');
-  const category=String(draft?.category||'Other').trim() || 'Other';
+  const title=String(draft?.title ?? '').trim();
+  if(!title) throw new Error('标题不能为空，请检查标题输入框。');
+  const category=String(draft?.category ?? 'Other').trim() || 'Other';
   const paragraphs=(draft?.paragraphs||[])
     .map(p=>Array.isArray(p)?p.map(x=>String(x).trim()).filter(Boolean):String(p).split(/(?<=[.!?])\s+/).map(x=>x.trim()).filter(Boolean))
     .filter(p=>p.length);
-  if(!paragraphs.length) throw new Error('Article content is required. Please enter at least one paragraph.');
+  if(!paragraphs.length) throw new Error('文章正文不能为空，请至少输入一个段落。');
   return {
     title,
     slug:slugify(title),
-    subtitle:String(draft?.dek||'').trim(),
-    level:String(draft?.level||'Upper intermediate').trim(),
+    subtitle:String(draft?.dek ?? '').trim(),
+    level:String(draft?.level || 'Upper intermediate').trim(),
     category,
     categorySlug:slugify(category),
     categoryName:category,
@@ -62,5 +62,25 @@ export function draftToPayload(draft){
     paragraphs,
     sourceName:'JEnglish',
     copyrightNote:'Authorized editorial content.'
+  };
+}
+
+export function draftFromFormValues(values){
+  const v = values || {};
+  const title = String(v.title ?? '').trim();
+  const categoryChoice = String(v.categoryChoice ?? '').trim();
+  const customCategory = String(v.categoryOther ?? '').trim();
+  const category = categoryChoice === '__other__' ? customCategory : categoryChoice;
+  return {
+    slug: slugify(title),
+    title,
+    dek: String(v.subtitle ?? '').trim(),
+    level: String(v.level || 'Upper intermediate').trim(),
+    category: category || 'Other',
+    status: ['draft','review','published','archived'].includes(v.status) ? v.status : 'draft',
+    readingTime: Math.max(1, Number(v.readingTime || 5)),
+    tags: String(v.tags ?? '').split(',').map(x=>x.trim()).filter(Boolean),
+    coverImageUrl: String(v.coverImageUrl ?? '').trim(),
+    paragraphs: splitContent(v.content ?? ''),
   };
 }

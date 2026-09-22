@@ -14,8 +14,9 @@ async function bootAdmin() {
   const nodes = new Map();
   const app = {innerHTML:''};
   const body = {appendChild(){}, classList:{toggle(){}}};
-  function node(id, value='') { const n={id, value, style:{}, disabled:false, addEventListener(){}, click(){}, focus(){}}; return n; }
+  function node(id, value='') { const listeners={}; const n={id, value, style:{}, disabled:false, addEventListener(type,fn){listeners[type]=fn;}, click(){listeners.click?.({preventDefault(){}});}, focus(){}, dispatch(type){return listeners[type]?.({preventDefault(){}});}}; return n; }
   ['f-title','f-slug','f-subtitle','f-level','f-category-select','f-category-other','f-status','f-reading','f-tags','f-cover','f-content'].forEach(id=>nodes.set(`#${id}`,node(id)));
+  const formNode=node('article-form'); nodes.set('#article-form',formNode);
   nodes.set('#admin-app', app);
   const document={
     querySelector(sel){ return nodes.get(sel) || null; },
@@ -33,7 +34,17 @@ async function bootAdmin() {
     if(url==='/api/admin/articles' && options.method==='POST') return new Response(JSON.stringify({article}),{status:201,headers:{'Content-Type':'application/json'}});
     return new Response(JSON.stringify({articles:[]}),{status:200,headers:{'Content-Type':'application/json'}});
   };
-  const context={console,document,sessionStorage,fetch,Response,URL,setTimeout,clearTimeout,Intl,structuredClone,window:null,location:{href:'http://test.local/admin'},open(){}};
+  class FakeFormData {
+    constructor(){
+      this.map=new Map([
+        ['title',nodes.get('#f-title').value],['subtitle',nodes.get('#f-subtitle').value],['level',nodes.get('#f-level').value],
+        ['categoryChoice',nodes.get('#f-category-select').value],['categoryOther',nodes.get('#f-category-other').value],['status',nodes.get('#f-status').value],
+        ['readingTime',nodes.get('#f-reading').value],['tags',nodes.get('#f-tags').value],['coverImageUrl',nodes.get('#f-cover').value],['content',nodes.get('#f-content').value],
+      ]);
+    }
+    get(k){return this.map.get(k) ?? null;}
+  }
+  const context={console,document,sessionStorage,fetch,Response,URL,setTimeout,clearTimeout,Intl,structuredClone,window:null,location:{href:'http://test.local/admin'},open(){},FormData:FakeFormData};
   context.window=context;
   vm.createContext(context);
   const harness=`
@@ -61,7 +72,8 @@ test('actual CMS save reads title/body from rendered form and posts a complete d
   context.__set('f-cover','');
   context.__set('f-content','First paragraph.\n\nSecond paragraph.');
   context.__setCategory('Business');
-  await context.__save();
+  context.document.querySelector('#article-form').dispatch('submit');
+  await new Promise(r=>setTimeout(r,20));
   const req=requests.find(x=>x.url==='/api/admin/articles' && x.options.method==='POST');
   assert.ok(req,'expected create draft POST');
   const body=JSON.parse(req.options.body);
@@ -84,7 +96,8 @@ test('actual CMS Other category field is serialized from the custom input',async
   context.__set('f-cover','');
   context.__set('f-content','Cars shape cities.\n\nNew transport changes that pattern.');
   context.__setCategory('__other__','Urban Mobility');
-  await context.__save();
+  context.document.querySelector('#article-form').dispatch('submit');
+  await new Promise(r=>setTimeout(r,20));
   const req=requests.find(x=>x.url==='/api/admin/articles' && x.options.method==='POST');
   assert.ok(req,'expected create draft POST');
   const body=JSON.parse(req.options.body);

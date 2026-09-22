@@ -55,6 +55,10 @@ const state = {
   speed: 1,
   speechToken: 0,
   speechPlaying: false,
+  speechPaused: false,
+  speechStartedAt: 0,
+  speechElapsedMs: 0,
+  speechEstimatedDuration: 0,
   translationBusy: false,
   translationError: '',
   previousOpen: false,
@@ -504,6 +508,46 @@ function stopSpeechTimer() {
 function resetSpeechProgress() {
   stopSpeechTimer();
   state.speechProgress = 0;
+  state.speechElapsedMs = 0;
+  state.speechStartedAt = 0;
+  state.speechEstimatedDuration = 0;
+  state.speechPaused = false;
+}
+
+function startSpeechProgressLoop() {
+  stopSpeechTimer();
+  const updateSpeechProgress = () => {
+    if (!state.speechPlaying) return;
+    const elapsed = state.speechElapsedMs + (performance.now() - state.speechStartedAt);
+    state.speechProgress = Math.min(0.99, elapsed / Math.max(1, state.speechEstimatedDuration));
+    const progress = document.querySelector('.audio-progress');
+    const thumb = document.querySelector('.audio-progress-thumb');
+    if (progress) progress.style.width = `${state.speechProgress * 100}%`;
+    if (thumb) thumb.style.left = `${state.speechProgress * 100}%`;
+    state.speechTimer = requestAnimationFrame(updateSpeechProgress);
+  };
+  state.speechTimer = requestAnimationFrame(updateSpeechProgress);
+}
+
+function pauseSpeech() {
+  if (!speechSynthesis.speaking || speechSynthesis.paused) return;
+  state.speechElapsedMs += Math.max(0, performance.now() - state.speechStartedAt);
+  state.speechStartedAt = 0;
+  state.speechPlaying = false;
+  state.speechPaused = true;
+  speechSynthesis.pause();
+  stopSpeechTimer();
+  render();
+}
+
+function resumeSpeech() {
+  if (!speechSynthesis.speaking || !speechSynthesis.paused) return;
+  speechSynthesis.resume();
+  state.speechPlaying = true;
+  state.speechPaused = false;
+  state.speechStartedAt = performance.now();
+  startSpeechProgressLoop();
+  render();
 }
 
 function toggleSpeech() {
@@ -512,42 +556,44 @@ function toggleSpeech() {
     return;
   }
   if (speechSynthesis.speaking) {
-    speechSynthesis.cancel();
-    state.speechPlaying = false;
-    resetSpeechProgress();
-    render();
+    if (speechSynthesis.paused) resumeSpeech();
+    else pauseSpeech();
     return;
   }
+
   const utterance = new SpeechSynthesisUtterance(state.selected.text);
   utterance.lang = 'en-GB';
   utterance.rate = state.speed;
   state.speechPlaying = true;
+  state.speechPaused = false;
   state.speechProgress = 0;
+  state.speechElapsedMs = 0;
+  state.speechStartedAt = performance.now();
   const token = ++state.speechToken;
-  const estimatedDuration = Math.max(1800, Math.min(18_000, (state.selected.text.length * 62) / state.speed));
-  const startedAt = performance.now();
+  state.speechEstimatedDuration = Math.max(1800, Math.min(18_000, (state.selected.text.length * 62) / state.speed));
   stopSpeechTimer();
-  const updateSpeechProgress = () => {
-    const elapsed = performance.now() - startedAt;
-    state.speechProgress = Math.min(0.99, elapsed / estimatedDuration);
-    const progress = document.querySelector('.audio-progress');
-    const thumb = document.querySelector('.audio-progress-thumb');
-    if (progress) progress.style.width = `${state.speechProgress * 100}%`;
-    if (thumb) thumb.style.left = `${state.speechProgress * 100}%`;
-    if (state.speechPlaying) state.speechTimer = requestAnimationFrame(updateSpeechProgress);
-  };
-  state.speechTimer = requestAnimationFrame(updateSpeechProgress);
+  startSpeechProgressLoop();
+
   utterance.onend = () => {
     if (token !== state.speechToken) return;
     state.speechPlaying = false;
+    state.speechPaused = false;
     state.speechProgress = 1;
+    state.speechElapsedMs = state.speechEstimatedDuration;
     stopSpeechTimer();
     render();
-    setTimeout(() => { if (token === state.speechToken) { state.speechProgress = 0; render(); } }, 350);
+    setTimeout(() => {
+      if (token === state.speechToken && !speechSynthesis.speaking) {
+        state.speechProgress = 0;
+        state.speechElapsedMs = 0;
+        render();
+      }
+    }, 350);
   };
   utterance.onerror = () => {
     if (token !== state.speechToken) return;
     state.speechPlaying = false;
+    state.speechPaused = false;
     resetSpeechProgress();
     render();
   };
@@ -555,7 +601,6 @@ function toggleSpeech() {
   speechSynthesis.speak(utterance);
   render();
 }
-
 
 function nextSentence() {
   if (!state.selected) return showToast(t('selectSentence'));

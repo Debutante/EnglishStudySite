@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-label="The New Geography of Remote Work">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#32465f"/><stop offset="1" stop-color="#17201f"/></linearGradient></defs>
+    <rect width="1200" height="700" fill="#e7ebf2"/>
+    <circle cx="1020" cy="110" r="220" fill="#32465f" opacity="0.16"/>
+    <circle cx="1060" cy="600" r="260" fill="#32465f" opacity="0.09"/>
+    <path d="M0 540 C260 430 420 590 680 490 S1020 390 1200 470 L1200 700 L0 700 Z" fill="url(#g)" opacity="0.97"/>
+    <rect x="70" y="70" width="170" height="34" rx="17" fill="#32465f"/>
+    <text x="155" y="93" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="white">BUSINESS</text>
+    <text x="70" y="205" font-family="Georgia, serif" font-size="56" font-weight="700" fill="#17201f">The New Geography of Remote</text><text x="70" y="269" font-family="Georgia, serif" font-size="56" font-weight="700" fill="#17201f">Work</text>
+    <text x="70" y="450" font-family="Arial, sans-serif" font-size="20" fill="#4d5a58">How flexible working is changing the relationship between offices, cities, and workers</text>
+    <text x="70" y="625" font-family="Arial, sans-serif" font-size="17" fill="white" opacity="0.86">cities  •  employment  •  productivity  •  remote work</text>
+    <text x="1115" y="92" text-anchor="end" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#17201f">JEnglish</text>
+  </svg>

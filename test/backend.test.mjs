@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatArticleSummary, formatSentence, normalizeSlug } from '../db/postgres.mjs';
+import { formatArticleSummary, formatSentence, normalizeSlug, normalizeAdminArticleInput } from '../db/postgres.mjs';
 import { parseApiPath, resolveAdminEndpoint } from '../server.mjs';
 import { normalizeAiRequest, mockAnswer } from '../server-core.mjs';
 
@@ -101,6 +101,13 @@ test('auto-generates URL-safe slugs from titles, including Unicode', () => {
 });
 
 
+
+
+test('normalizes nested admin article payloads so a populated title is never lost', () => {
+  const body = normalizeAdminArticleInput({ article: { title: 'The New Geography of Remote Work', paragraphs: [['First sentence.']] } });
+  assert.equal(body.title, 'The New Geography of Remote Work');
+  assert.deepEqual(body.paragraphs, [['First sentence.']]);
+});
 test('admin endpoint resolver covers draft save, update, publish and AI generation paths', () => {
   assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles']), 'create-article');
   assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles','save']), 'create-article');
