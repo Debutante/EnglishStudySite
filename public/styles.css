@@ -268,4 +268,4 @@ body.dark .audio-bar { background:rgba(29,35,34,.96); }
 .language-choice { border:0; background:transparent; color:var(--muted); border-radius:8px; padding:6px 9px; font-size:11px; font-weight:700; }
 .language-choice.is-active { color:var(--ink); background:var(--accent-soft); }
 .audio-line { position:relative; }
-.audio-progress-thumb { position:absolute; top:50%; left:0; width:12px; height:12px; transform:translate(-50%,-50%); border-radius:50%; background:#fff; border:2px solid var(--accent); box-shadow:0 1px 5px rgba(0,0,0,.18); z-index:3; transition:left .08s linear; }
+.audio-progress-thumb { position:absolute; top:50%; left:0; width:20px; height:20px; transform:translate(-50%,-50%); border-radius:50%; background:#fff; border:0; box-shadow:0 2px 8px rgba(0,0,0,.22); z-index:3; transition:left .08s linear; pointer-events:none; }

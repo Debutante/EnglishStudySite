@@ -58,7 +58,7 @@ async function boot() {
     setTimeout, clearTimeout, setInterval, clearInterval, performance,
     requestAnimationFrame:(fn)=>{ const id=++rafId; rafCallbacks.set(id,fn); return id; },
     cancelAnimationFrame:(id)=>rafCallbacks.delete(id),
-    speechSynthesis:{speaking:false,paused:false,cancel(){this.speaking=false;this.paused=false;},speak(){this.speaking=true;this.paused=false;},pause(){this.paused=true;this.speaking=false;},resume(){this.paused=false;this.speaking=true;}},
+    speechSynthesis:{speaking:false,paused:false,lastUtterance:null,cancelCount:0,cancel(){this.cancelCount+=1;this.speaking=false;this.paused=false;},speak(utterance){this.lastUtterance=utterance;this.speaking=true;this.paused=false;},pause(){this.paused=true;this.speaking=false;},resume(){this.paused=false;this.speaking=true;}},
     SpeechSynthesisUtterance: class { constructor(text){this.text=text;} },
   };
   context.window = context;
@@ -140,15 +140,18 @@ test('sentence playback pauses without resetting the dot/filled track and resume
   assert.equal(firstWidth, firstLeft);
 
   context.__setNow(1400);
+  const utteranceBeforePause = context.speechSynthesis.lastUtterance;
   context.__toggleSpeech();
   assert.equal((await context.__stateSnapshot()).speechPlaying, false);
-  assert.equal(context.speechSynthesis.paused, true);
+  assert.equal((await context.__stateSnapshot()).currentArticle.slug, 'test-article');
+  assert.equal(context.speechSynthesis.paused, false);
   assert.equal(context.speechSynthesis.speaking, false);
 
   const pausedLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
   const pausedWidth = Number.parseFloat(context.document.querySelector('.audio-progress').style.width || '0');
   assert.equal(pausedLeft, pausedWidth);
   assert.ok(pausedLeft >= firstLeft);
+  assert.ok(context.speechSynthesis.cancelCount >= 2, 'pause should cancel the current utterance and own the resume state');
 
   // A normal render while paused must keep exactly the same visual position.
   context.__renderNow();
@@ -162,13 +165,15 @@ test('sentence playback pauses without resetting the dot/filled track and resume
   assert.equal(stillPausedLeft, pausedLeft);
   assert.equal(stillPausedWidth, pausedWidth);
 
-  // Resume must use application paused state even though speechSynthesis.speaking=false.
+  // Resume must create a new utterance from the saved character offset, not restart the full sentence.
   context.__toggleSpeech();
   assert.equal((await context.__stateSnapshot()).speechPlaying, true);
   assert.equal(context.speechSynthesis.paused, false);
   assert.equal(context.speechSynthesis.speaking, true);
   const resumedStart = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
   assert.equal(resumedStart, pausedLeft);
+  assert.notEqual(context.speechSynthesis.lastUtterance, utteranceBeforePause);
+  assert.ok(context.speechSynthesis.lastUtterance.text.length < utteranceBeforePause.text.length, 'resumed utterance should start from the saved offset');
 
   const resumeCallback = [...rafCallbacks.values()][0];
   context.__setNow(5600);

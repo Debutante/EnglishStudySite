@@ -59,6 +59,8 @@ const state = {
   speechStartedAt: null,
   speechElapsedMs: 0,
   speechEstimatedDuration: 0,
+  speechResumeChar: 0,
+  speechBoundaryChar: 0,
   translationBusy: false,
   translationError: '',
   previousOpen: false,
@@ -528,6 +530,8 @@ function resetSpeechProgress() {
   state.speechElapsedMs = 0;
   state.speechStartedAt = null;
   state.speechEstimatedDuration = 0;
+  state.speechResumeChar = 0;
+  state.speechBoundaryChar = 0;
   state.speechPaused = false;
   syncSpeechProgressVisuals();
   syncSpeechControlVisual();
@@ -537,6 +541,10 @@ function updateSpeechProgressNow() {
   if (!state.speechPlaying || state.speechPaused || state.speechStartedAt == null) return;
   const elapsed = state.speechElapsedMs + Math.max(0, performance.now() - state.speechStartedAt);
   state.speechProgress = Math.min(0.99, elapsed / Math.max(1, state.speechEstimatedDuration));
+  const textLength = state.selected?.text?.length || 0;
+  if (textLength) {
+    state.speechResumeChar = Math.max(state.speechResumeChar, Math.min(textLength - 1, Math.floor(state.speechProgress * textLength)));
+  }
   syncSpeechProgressVisuals();
 }
 
@@ -553,63 +561,58 @@ function startSpeechProgressLoop() {
 function pauseSpeech() {
   if (!state.speechPlaying || state.speechPaused) return;
   updateSpeechProgressNow();
-  state.speechElapsedMs += Math.max(0, performance.now() - state.speechStartedAt);
+  const textLength = state.selected?.text?.length || 0;
+  if (textLength) {
+    state.speechResumeChar = Math.max(0, Math.min(textLength - 1, Math.floor(state.speechProgress * textLength)));
+  }
+  state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
   state.speechStartedAt = null;
   state.speechPlaying = false;
   state.speechPaused = true;
-  syncSpeechProgressVisuals();
   stopSpeechTimer();
-  // Keep the utterance alive so resume continues from the browser's paused position.
-  speechSynthesis.pause();
+  // Cancel the current utterance instead of relying on SpeechSynthesis.pause().
+  // Browsers can report paused speech as non-speaking and can lose the native
+  // paused position. We preserve the position ourselves and resume from it.
+  state.speechToken += 1;
+  speechSynthesis.cancel();
+  syncSpeechProgressVisuals();
   syncSpeechControlVisual();
 }
 
-function resumeSpeech() {
-  if (!state.speechPaused) return;
-  // Some browser implementations can report speechSynthesis.speaking=false while paused.
-  // The application state is therefore authoritative for deciding whether this is a resume.
-  speechSynthesis.resume();
-  state.speechPlaying = true;
-  state.speechPaused = false;
-  state.speechStartedAt = performance.now();
-  syncSpeechControlVisual();
-  startSpeechProgressLoop();
-}
-
-function toggleSpeech() {
-  if (!state.selected || !('speechSynthesis' in window)) {
-    showToast(state.selected ? t('browserNoSpeech') : t('selectSentence'));
+function speakSelectedFromOffset() {
+  if (!state.selected) return;
+  const fullText = state.selected.text;
+  const textLength = fullText.length;
+  const offset = Math.max(0, Math.min(textLength - 1, state.speechResumeChar || 0));
+  const remainingText = fullText.slice(offset);
+  if (!remainingText) {
+    state.speechProgress = 1;
+    state.speechPlaying = false;
+    state.speechPaused = false;
+    syncSpeechProgressVisuals();
+    syncSpeechControlVisual();
     return;
   }
 
-  // Check our paused state first. This avoids restarting from zero on browsers
-  // that temporarily report speechSynthesis.speaking=false after pause().
-  if (state.speechPaused) {
-    resumeSpeech();
-    return;
-  }
-
-  if (state.speechPlaying) {
-    pauseSpeech();
-    return;
-  }
-
-  const utterance = new SpeechSynthesisUtterance(state.selected.text);
+  const utterance = new SpeechSynthesisUtterance(remainingText);
   utterance.lang = 'en-GB';
   utterance.rate = state.speed;
   state.speechPlaying = true;
   state.speechPaused = false;
-  state.speechProgress = 0;
-  state.speechElapsedMs = 0;
   state.speechStartedAt = performance.now();
   const token = ++state.speechToken;
-  state.speechEstimatedDuration = Math.max(1800, Math.min(18_000, (state.selected.text.length * 62) / state.speed));
+  state.speechEstimatedDuration = Math.max(1800, Math.min(18_000, (textLength * 62) / state.speed));
+  state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
+  state.speechBoundaryChar = offset;
   stopSpeechTimer();
 
   utterance.onboundary = (event) => {
     if (token !== state.speechToken || state.speechPaused) return;
-    if (typeof event.charIndex !== 'number' || !state.selected?.text?.length) return;
-    const boundaryProgress = Math.max(0, Math.min(0.99, event.charIndex / state.selected.text.length));
+    if (typeof event.charIndex !== 'number' || !textLength) return;
+    const absoluteChar = Math.min(textLength - 1, offset + event.charIndex);
+    state.speechBoundaryChar = Math.max(state.speechBoundaryChar, absoluteChar);
+    state.speechResumeChar = state.speechBoundaryChar;
+    const boundaryProgress = Math.max(0, Math.min(0.99, absoluteChar / textLength));
     if (boundaryProgress > state.speechProgress) {
       state.speechProgress = boundaryProgress;
       state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
@@ -619,13 +622,14 @@ function toggleSpeech() {
   };
 
   utterance.onend = () => {
-    if (token !== state.speechToken) return;
-    if (state.speechPaused) return;
+    if (token !== state.speechToken || state.speechPaused) return;
     state.speechPlaying = false;
     state.speechPaused = false;
     state.speechProgress = 1;
     state.speechElapsedMs = state.speechEstimatedDuration;
     state.speechStartedAt = null;
+    state.speechResumeChar = textLength;
+    state.speechBoundaryChar = textLength;
     stopSpeechTimer();
     syncSpeechProgressVisuals();
     syncSpeechControlVisual();
@@ -644,6 +648,36 @@ function toggleSpeech() {
   syncSpeechProgressVisuals();
   syncSpeechControlVisual();
   startSpeechProgressLoop();
+}
+
+function resumeSpeech() {
+  if (!state.speechPaused) return;
+  // Resume from the app-owned character offset, not from the browser's native
+  // paused state. This prevents browsers from restarting the utterance at 0.
+  speakSelectedFromOffset();
+}
+
+function toggleSpeech() {
+  if (!state.selected || !('speechSynthesis' in window)) {
+    showToast(state.selected ? t('browserNoSpeech') : t('selectSentence'));
+    return;
+  }
+
+  if (state.speechPaused) {
+    resumeSpeech();
+    return;
+  }
+
+  if (state.speechPlaying) {
+    pauseSpeech();
+    return;
+  }
+
+  state.speechProgress = 0;
+  state.speechElapsedMs = 0;
+  state.speechResumeChar = 0;
+  state.speechBoundaryChar = 0;
+  speakSelectedFromOffset();
 }
 
 function nextSentence() {
