@@ -5,7 +5,7 @@ const I18N = {
     ask:'AI 提问', selected:'选中句子', emptyAi:'请选择一个句子，在这里向 AI 提问。', assistantTitle:'从句子开始学习。', noSelection:'选中英文句子后，可以获得中文解释、翻译、语法和词汇提示。',
     articlePrompt:'关于这篇文章提问…', contextAttached:'已附带文章上下文', send:'发送', reading:'阅读', readMin:'分钟阅读', level:'等级', savedCount:'已保存',
     editorial:'JEnglish · 英语精读学习空间', saveArticle:'保存文章', loadingTranslation:'正在生成中文翻译…', translationEmpty:'点击“中文”后，将把整篇文章翻译成中文。',
-    aiAssistant:'AI 助手', reopenAi:'打开 AI 助手', closeAi:'关闭 AI 助手', british:'英式英语', chooseSentence:'请选择一个句子开始朗读', retry:'重试',
+    aiAssistant:'AI 助手', reopenAi:'打开 AI 助手', closeAi:'关闭 AI 助手', british:'英式英语', chooseSentence:'请选择一个句子开始朗读', pause:'暂停', retry:'重试',
     simpleExplain:'简单解释', keyExpressions:'重点表达', grammarExplain:'语法解释', noSaved:'还没有保存内容', saveHint:'阅读时可以保存句子或文章。', delete:'删除',
     contentApi:'内容 API', loadingContent:'正在加载阅读库…', connectApi:'正在连接文章 API。', articleUnavailable:'文章暂时无法加载', noPublished:'内容 API 没有返回已发布文章。',
     generating:'正在生成…', minute:'分钟', navigation:'导航', language:'语言', theme:'切换主题', reader:'文章阅读器', playbackSpeed:'播放速度', nextSentence:'下一句',
@@ -18,7 +18,7 @@ const I18N = {
     ask:'Ask AI', selected:'Selected sentence', emptyAi:'Select a sentence to ask the AI.', assistantTitle:'Learn from the sentence.', noSelection:'Select an English sentence to get meaning, translation, grammar, and vocabulary help.',
     articlePrompt:'Ask about this article…', contextAttached:'Article context attached', send:'Send', reading:'Reading', readMin:'min read', level:'Level', savedCount:'Saved',
     editorial:'JEnglish · English reading workspace', saveArticle:'Save article', loadingTranslation:'Generating Chinese translation…', translationEmpty:'Select “Chinese” to translate the full article.',
-    aiAssistant:'AI Assistant', reopenAi:'Open AI assistant', closeAi:'Close AI assistant', british:'British English', chooseSentence:'Select a sentence to start listening', retry:'Retry',
+    aiAssistant:'AI Assistant', reopenAi:'Open AI assistant', closeAi:'Close AI assistant', british:'British English', chooseSentence:'Select a sentence to start listening', pause:'Pause', retry:'Retry',
     simpleExplain:'Simple explanation', keyExpressions:'Key expressions', grammarExplain:'Grammar explanation', noSaved:'No saved content yet', saveHint:'Save sentences or articles while reading.', delete:'Delete',
     contentApi:'CONTENT API', loadingContent:'Loading reading library…', connectApi:'Connecting to the article API.', articleUnavailable:'Article could not be loaded', noPublished:'The content API returned no published articles.',
     generating:'Generating…', minute:'min', navigation:'Navigation', language:'Language', theme:'Toggle theme', reader:'Article reader', playbackSpeed:'Playback speed', nextSentence:'Next sentence',
@@ -56,7 +56,7 @@ const state = {
   speechToken: 0,
   speechPlaying: false,
   speechPaused: false,
-  speechStartedAt: 0,
+  speechStartedAt: null,
   speechElapsedMs: 0,
   speechEstimatedDuration: 0,
   translationBusy: false,
@@ -328,7 +328,7 @@ function bindEvents() {
     const pIdx = Number(btn.dataset.pidx), sIdx = Number(btn.dataset.sidx);
     const sentence = a.paragraphs[pIdx]?.sentences?.[sIdx];
     if (!sentence) return;
-    if (speechSynthesis?.speaking) speechSynthesis.cancel();
+    if (speechSynthesis?.speaking || state.speechPaused || state.speechPlaying) { speechSynthesis.cancel(); state.speechToken += 1; }
     state.speechPlaying = false;
     resetSpeechProgress();
     state.selected = { id: String(sentence.id), text: sentence.text, paragraph: a.paragraphs[pIdx], pIdx, sIdx };
@@ -505,49 +505,75 @@ function stopSpeechTimer() {
   state.speechTimer = null;
 }
 
+function syncSpeechProgressVisuals() {
+  const percent = `${Math.max(0, Math.min(1, state.speechProgress)) * 100}%`;
+  const progress = document.querySelector('.audio-progress');
+  const thumb = document.querySelector('.audio-progress-thumb');
+  if (progress) progress.style.width = percent;
+  if (thumb) thumb.style.left = percent;
+}
+
+function syncSpeechControlVisual() {
+  const button = document.querySelector('[data-play]');
+  if (!button) return;
+  const active = state.speechPlaying && !state.speechPaused;
+  button.innerHTML = active ? icon('pause') : icon('play');
+  button.setAttribute('aria-label', active ? t('pause') : t('listen'));
+  button.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
 function resetSpeechProgress() {
   stopSpeechTimer();
   state.speechProgress = 0;
   state.speechElapsedMs = 0;
-  state.speechStartedAt = 0;
+  state.speechStartedAt = null;
   state.speechEstimatedDuration = 0;
   state.speechPaused = false;
+  syncSpeechProgressVisuals();
+  syncSpeechControlVisual();
+}
+
+function updateSpeechProgressNow() {
+  if (!state.speechPlaying || state.speechPaused || state.speechStartedAt == null) return;
+  const elapsed = state.speechElapsedMs + Math.max(0, performance.now() - state.speechStartedAt);
+  state.speechProgress = Math.min(0.99, elapsed / Math.max(1, state.speechEstimatedDuration));
+  syncSpeechProgressVisuals();
 }
 
 function startSpeechProgressLoop() {
   stopSpeechTimer();
   const updateSpeechProgress = () => {
-    if (!state.speechPlaying) return;
-    const elapsed = state.speechElapsedMs + (performance.now() - state.speechStartedAt);
-    state.speechProgress = Math.min(0.99, elapsed / Math.max(1, state.speechEstimatedDuration));
-    const progress = document.querySelector('.audio-progress');
-    const thumb = document.querySelector('.audio-progress-thumb');
-    if (progress) progress.style.width = `${state.speechProgress * 100}%`;
-    if (thumb) thumb.style.left = `${state.speechProgress * 100}%`;
+    if (!state.speechPlaying || state.speechPaused) return;
+    updateSpeechProgressNow();
     state.speechTimer = requestAnimationFrame(updateSpeechProgress);
   };
   state.speechTimer = requestAnimationFrame(updateSpeechProgress);
 }
 
 function pauseSpeech() {
-  if (!speechSynthesis.speaking || speechSynthesis.paused) return;
+  if (!state.speechPlaying || state.speechPaused) return;
+  updateSpeechProgressNow();
   state.speechElapsedMs += Math.max(0, performance.now() - state.speechStartedAt);
-  state.speechStartedAt = 0;
+  state.speechStartedAt = null;
   state.speechPlaying = false;
   state.speechPaused = true;
-  speechSynthesis.pause();
+  syncSpeechProgressVisuals();
   stopSpeechTimer();
-  render();
+  // Keep the utterance alive so resume continues from the browser's paused position.
+  speechSynthesis.pause();
+  syncSpeechControlVisual();
 }
 
 function resumeSpeech() {
-  if (!speechSynthesis.speaking || !speechSynthesis.paused) return;
+  if (!state.speechPaused) return;
+  // Some browser implementations can report speechSynthesis.speaking=false while paused.
+  // The application state is therefore authoritative for deciding whether this is a resume.
   speechSynthesis.resume();
   state.speechPlaying = true;
   state.speechPaused = false;
   state.speechStartedAt = performance.now();
+  syncSpeechControlVisual();
   startSpeechProgressLoop();
-  render();
 }
 
 function toggleSpeech() {
@@ -555,9 +581,16 @@ function toggleSpeech() {
     showToast(state.selected ? t('browserNoSpeech') : t('selectSentence'));
     return;
   }
-  if (speechSynthesis.speaking) {
-    if (speechSynthesis.paused) resumeSpeech();
-    else pauseSpeech();
+
+  // Check our paused state first. This avoids restarting from zero on browsers
+  // that temporarily report speechSynthesis.speaking=false after pause().
+  if (state.speechPaused) {
+    resumeSpeech();
+    return;
+  }
+
+  if (state.speechPlaying) {
+    pauseSpeech();
     return;
   }
 
@@ -572,34 +605,45 @@ function toggleSpeech() {
   const token = ++state.speechToken;
   state.speechEstimatedDuration = Math.max(1800, Math.min(18_000, (state.selected.text.length * 62) / state.speed));
   stopSpeechTimer();
-  startSpeechProgressLoop();
+
+  utterance.onboundary = (event) => {
+    if (token !== state.speechToken || state.speechPaused) return;
+    if (typeof event.charIndex !== 'number' || !state.selected?.text?.length) return;
+    const boundaryProgress = Math.max(0, Math.min(0.99, event.charIndex / state.selected.text.length));
+    if (boundaryProgress > state.speechProgress) {
+      state.speechProgress = boundaryProgress;
+      state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
+      state.speechStartedAt = performance.now();
+      syncSpeechProgressVisuals();
+    }
+  };
 
   utterance.onend = () => {
     if (token !== state.speechToken) return;
+    if (state.speechPaused) return;
     state.speechPlaying = false;
     state.speechPaused = false;
     state.speechProgress = 1;
     state.speechElapsedMs = state.speechEstimatedDuration;
+    state.speechStartedAt = null;
     stopSpeechTimer();
-    render();
-    setTimeout(() => {
-      if (token === state.speechToken && !speechSynthesis.speaking) {
-        state.speechProgress = 0;
-        state.speechElapsedMs = 0;
-        render();
-      }
-    }, 350);
+    syncSpeechProgressVisuals();
+    syncSpeechControlVisual();
   };
+
   utterance.onerror = () => {
-    if (token !== state.speechToken) return;
+    if (token !== state.speechToken || state.speechPaused) return;
     state.speechPlaying = false;
     state.speechPaused = false;
     resetSpeechProgress();
-    render();
+    syncSpeechControlVisual();
   };
+
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
-  render();
+  syncSpeechProgressVisuals();
+  syncSpeechControlVisual();
+  startSpeechProgressLoop();
 }
 
 function nextSentence() {
@@ -609,7 +653,7 @@ function nextSentence() {
   if (s >= a.paragraphs[p].sentences.length) { p++; s = 0; }
   if (p >= a.paragraphs.length) { p = 0; s = 0; }
   const sentence = a.paragraphs[p].sentences[s];
-  if (speechSynthesis?.speaking) speechSynthesis.cancel();
+  if (speechSynthesis?.speaking || state.speechPaused || state.speechPlaying) { speechSynthesis.cancel(); state.speechToken += 1; }
   state.speechPlaying = false;
   resetSpeechProgress();
   state.selected = { id:String(sentence.id), text:sentence.text, paragraph:a.paragraphs[p], pIdx:p, sIdx:s };

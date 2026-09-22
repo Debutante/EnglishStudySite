@@ -58,7 +58,7 @@ async function boot() {
     setTimeout, clearTimeout, setInterval, clearInterval, performance,
     requestAnimationFrame:(fn)=>{ const id=++rafId; rafCallbacks.set(id,fn); return id; },
     cancelAnimationFrame:(id)=>rafCallbacks.delete(id),
-    speechSynthesis:{speaking:false,paused:false,cancel(){this.speaking=false;this.paused=false;},speak(){this.speaking=true;this.paused=false;},pause(){this.paused=true;},resume(){this.paused=false;}},
+    speechSynthesis:{speaking:false,paused:false,cancel(){this.speaking=false;this.paused=false;},speak(){this.speaking=true;this.paused=false;},pause(){this.paused=true;this.speaking=false;},resume(){this.paused=false;this.speaking=true;}},
     SpeechSynthesisUtterance: class { constructor(text){this.text=text;} },
   };
   context.window = context;
@@ -73,6 +73,7 @@ async function boot() {
     globalThis.__startSpeech = () => toggleSpeech();
     globalThis.__toggleSpeech = () => toggleSpeech();
     globalThis.__setNow = (n) => { globalThis.__testNow = n; };
+    globalThis.__renderNow = () => render();
     globalThis.__bootPromise = (async () => { await new Promise(r => setTimeout(r, 10)); return __stateSnapshot(); })();
   `;
   vm.runInContext(source + harness, context, {filename:'app.js'});
@@ -123,28 +124,57 @@ test('all six AI assistant actions call the API and render a response', async ()
   assert.equal(fetchLog.filter(x=>x.url==='/api/ai').length, 6);
 });
 
-test('sentence playback pauses and resumes from the paused position', async () => {
+test('sentence playback pauses without resetting the dot/filled track and resumes from the same position', async () => {
   const {context, root, rafCallbacks} = await boot();
   await context.__setSelected();
   context.__setNow(0);
   context.__startSpeech();
   assert.equal((await context.__stateSnapshot()).speechPlaying, true);
-  let callback = [...rafCallbacks.values()][0];
+
+  const callback = [...rafCallbacks.values()][0];
   context.__setNow(1000);
   callback();
   const firstLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  const firstWidth = Number.parseFloat(context.document.querySelector('.audio-progress').style.width || '0');
   assert.ok(firstLeft > 0, `expected moving dot, got ${firstLeft}`);
+  assert.equal(firstWidth, firstLeft);
+
   context.__setNow(1400);
   context.__toggleSpeech();
   assert.equal((await context.__stateSnapshot()).speechPlaying, false);
   assert.equal(context.speechSynthesis.paused, true);
+  assert.equal(context.speechSynthesis.speaking, false);
+
   const pausedLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  const pausedWidth = Number.parseFloat(context.document.querySelector('.audio-progress').style.width || '0');
+  assert.equal(pausedLeft, pausedWidth);
+  assert.ok(pausedLeft >= firstLeft);
+
+  // A normal render while paused must keep exactly the same visual position.
+  context.__renderNow();
+  assert.match(root.innerHTML, new RegExp(`audio-progress[^>]*style=\"width:${pausedWidth}`));
+  assert.match(root.innerHTML, new RegExp(`audio-progress-thumb[^>]*style=\"left:${pausedLeft}`));
+
   context.__setNow(5000);
   for (const cb of [...rafCallbacks.values()]) cb();
   const stillPausedLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  const stillPausedWidth = Number.parseFloat(context.document.querySelector('.audio-progress').style.width || '0');
   assert.equal(stillPausedLeft, pausedLeft);
+  assert.equal(stillPausedWidth, pausedWidth);
+
+  // Resume must use application paused state even though speechSynthesis.speaking=false.
   context.__toggleSpeech();
   assert.equal((await context.__stateSnapshot()).speechPlaying, true);
   assert.equal(context.speechSynthesis.paused, false);
-  assert.ok(Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0') >= pausedLeft);
-});
+  assert.equal(context.speechSynthesis.speaking, true);
+  const resumedStart = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  assert.equal(resumedStart, pausedLeft);
+
+  const resumeCallback = [...rafCallbacks.values()][0];
+  context.__setNow(5600);
+  resumeCallback();
+  const resumedLeft = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left || '0');
+  const resumedWidth = Number.parseFloat(context.document.querySelector('.audio-progress').style.width || '0');
+  assert.ok(resumedLeft > pausedLeft);
+  assert.equal(resumedLeft, resumedWidth);
+});;

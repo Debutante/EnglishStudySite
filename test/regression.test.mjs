@@ -109,3 +109,12 @@ test('previous article cascade is rendered from similar article thumbnails', asy
   assert.match(source, /coverImageUrl/);
   assert.match(source, /similarArticles\(\)/);
 });
+
+
+test('speech progress uses a white circular dot and visible filled track', async () => {
+  const css = await fs.readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /background:#fff/);
+  assert.match(css, /border-radius:50%/);
+  assert.match(css, /\.audio-progress-thumb/);
+  assert.match(css, /\.audio-progress \{[^}]*background:var\(--accent\)/s);
+});
