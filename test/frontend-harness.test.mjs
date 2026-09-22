@@ -16,10 +16,12 @@ function storage(seed = {}) {
 async function boot() {
   const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const root = { innerHTML: '' };
+  const speechRoot = { innerHTML: '', querySelector(selector) { return special.get(selector) || null; } };
   const special = new Map([
     ['.audio-progress', { style: {} }],
     ['.audio-progress-thumb', { style: {} }],
     ['#app', root],
+    ['#speech-control', speechRoot],
   ]);
   const document = {
     querySelector: (selector) => special.get(selector) || null,
@@ -58,7 +60,7 @@ async function boot() {
     setTimeout, clearTimeout, setInterval, clearInterval, performance,
     requestAnimationFrame:(fn)=>{ const id=++rafId; rafCallbacks.set(id,fn); return id; },
     cancelAnimationFrame:(id)=>rafCallbacks.delete(id),
-    speechSynthesis:{speaking:false,paused:false,lastUtterance:null,cancelCount:0,cancel(){this.cancelCount+=1;this.speaking=false;this.paused=false;},speak(utterance){this.lastUtterance=utterance;this.speaking=true;this.paused=false;},pause(){this.paused=true;this.speaking=false;},resume(){this.paused=false;this.speaking=true;}},
+    speechSynthesis:{speaking:false,paused:false,lastUtterance:null,cancelCount:0,cancel(){this.cancelCount+=1;const old=this.lastUtterance;this.speaking=false;this.paused=false;if(old && typeof old.onend==='function') old.onend();},speak(utterance){this.lastUtterance=utterance;this.speaking=true;this.paused=false;},pause(){this.paused=true;this.speaking=false;},resume(){this.paused=false;this.speaking=true;}},
     SpeechSynthesisUtterance: class { constructor(text){this.text=text;} },
   };
   context.window = context;
@@ -78,7 +80,7 @@ async function boot() {
   `;
   vm.runInContext(source + harness, context, {filename:'app.js'});
   await context.__bootPromise;
-  return { context, root, fetchLog, rafCallbacks, article };
+  return { context, root, speechRoot, fetchLog, rafCallbacks, article };
 }
 
 test('reader AI close button state actually hides the panel and exposes reopen control', async () => {
@@ -125,7 +127,7 @@ test('all six AI assistant actions call the API and render a response', async ()
 });
 
 test('sentence playback pauses without resetting the dot/filled track and resumes from the same position', async () => {
-  const {context, root, rafCallbacks} = await boot();
+  const {context, speechRoot, rafCallbacks} = await boot();
   await context.__setSelected();
   context.__setNow(0);
   context.__startSpeech();
@@ -155,8 +157,8 @@ test('sentence playback pauses without resetting the dot/filled track and resume
 
   // A normal render while paused must keep exactly the same visual position.
   context.__renderNow();
-  assert.match(root.innerHTML, new RegExp(`audio-progress[^>]*style=\"width:${pausedWidth}`));
-  assert.match(root.innerHTML, new RegExp(`audio-progress-thumb[^>]*style=\"left:${pausedLeft}`));
+  assert.match(speechRoot.innerHTML, new RegExp(`audio-progress[^>]*style=\"width:${pausedWidth}`));
+  assert.match(speechRoot.innerHTML, new RegExp(`audio-progress-thumb[^>]*style=\"left:${pausedLeft}`));
 
   context.__setNow(5000);
   for (const cb of [...rafCallbacks.values()]) cb();

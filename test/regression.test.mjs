@@ -118,7 +118,7 @@ test('speech progress uses a white circular dot and visible filled track', async
   const css = await fs.readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   assert.match(css, /background:#fff/);
   assert.match(css, /border-radius:50%/);
-  assert.match(css, /width:20px/);
+  assert.match(css, /width:26px/);
   assert.match(css, /height:20px/);
   assert.match(css, /background:#fff/);
   assert.match(css, /border:0/);

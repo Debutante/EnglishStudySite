@@ -281,21 +281,38 @@ function render() {
         ${!state.drawerOpen ? `<button class="ai-reopen" data-open-ai aria-label="${t('reopenAi')}">${icon('spark')} AI</button>` : ''}
       </main>
 
-      <div class="audio-bar">
-        <div class="audio-main">
-          <button class="audio-play" data-play aria-label="${t('listen')}">${state.speechPlaying ? icon('pause') : icon('play')}</button>
-          <div class="audio-track"><div class="audio-line"><span class="audio-progress" style="width:${state.speechProgress * 100}%"></span><span class="audio-progress-thumb" style="left:${state.speechProgress * 100}%"></span></div><div class="audio-caption"><span>${state.selected ? escapeHtml(state.selected.text) : t('chooseSentence')}</span><span>${state.selected ? t('british') : '—'}</span></div></div>
-        </div>
-        <div class="audio-controls">
-          <select data-speed aria-label="${t('playbackSpeed')}">${[0.75,1,1.25,1.5].map(v => `<option value="${v}" ${state.speed === v ? 'selected' : ''}>${v}×</option>`).join('')}</select>
-          <button class="audio-icon" data-next aria-label="${t('nextSentence')}">›</button>
-        </div>
-      </div>
-
       <div class="mobile-backdrop ${state.drawerOpen ? 'is-visible' : ''}" data-close-ai></div>
     </div>`;
 
+  renderSpeechControl();
   bindEvents();
+}
+
+function renderSpeechControl() {
+  const host = document.querySelector('#speech-control');
+  if (!host) return;
+  host.innerHTML = `
+    <div class="audio-bar">
+      <div class="audio-main">
+        <button class="audio-play" data-play aria-label="${t('listen')}" aria-pressed="${state.speechPlaying && !state.speechPaused ? 'true' : 'false'}">${state.speechPlaying && !state.speechPaused ? icon('pause') : icon('play')}</button>
+        <div class="audio-track">
+          <div class="audio-line">
+            <span class="audio-progress" style="width:${state.speechProgress * 100}%"></span>
+            <span class="audio-progress-thumb" style="left:${state.speechProgress * 100}%"></span>
+          </div>
+          <div class="audio-caption"><span>${state.selected ? escapeHtml(state.selected.text) : t('chooseSentence')}</span><span>${state.selected ? t('british') : '—'}</span></div>
+        </div>
+      </div>
+      <div class="audio-controls">
+        <select data-speed aria-label="${t('playbackSpeed')}">${[0.75,1,1.25,1.5].map(v => `<option value="${v}" ${state.speed === v ? 'selected' : ''}>${v}×</option>`).join('')}</select>
+        <button class="audio-icon" data-next aria-label="${t('nextSentence')}">›</button>
+      </div>
+    </div>`;
+  host.querySelector('[data-play]')?.addEventListener('click', toggleSpeech);
+  host.querySelector('[data-next]')?.addEventListener('click', nextSentence);
+  host.querySelector('[data-speed]')?.addEventListener('change', (e) => { state.speed = Number(e.target.value); });
+  syncSpeechProgressVisuals();
+  syncSpeechControlVisual();
 }
 
 function bindEvents() {
@@ -340,11 +357,7 @@ function bindEvents() {
   }));
 
   document.querySelectorAll('[data-ai-action]').forEach(btn => btn.addEventListener('click', () => runAi(btn.dataset.aiAction)));
-  document.querySelector('[data-listen]')?.addEventListener('click', toggleSpeech);
   document.querySelector('[data-save-sentence]')?.addEventListener('click', saveSelectedSentence);
-  document.querySelector('[data-play]')?.addEventListener('click', toggleSpeech);
-  document.querySelector('[data-next]')?.addEventListener('click', nextSentence);
-  document.querySelector('[data-speed]')?.addEventListener('change', (e) => { state.speed = Number(e.target.value); });
   document.querySelectorAll('[data-close-ai]').forEach(btn => btn.addEventListener('click', closeDrawer));
   document.querySelector('[data-open-ai]')?.addEventListener('click', openDrawer);
   document.querySelector('[data-ask-form]')?.addEventListener('submit', (e) => { e.preventDefault(); const text = e.currentTarget.question.value.trim(); if (text) runAi('chat', text); });
@@ -508,7 +521,8 @@ function stopSpeechTimer() {
 }
 
 function syncSpeechProgressVisuals() {
-  const percent = `${Math.max(0, Math.min(1, state.speechProgress)) * 100}%`;
+  const progressValue = Math.max(0, Math.min(1, Number(state.speechProgress) || 0));
+  const percent = `${progressValue * 100}%`;
   const progress = document.querySelector('.audio-progress');
   const thumb = document.querySelector('.audio-progress-thumb');
   if (progress) progress.style.width = percent;
@@ -526,13 +540,15 @@ function syncSpeechControlVisual() {
 
 function resetSpeechProgress() {
   stopSpeechTimer();
+  state.speechPlaying = false;
+  state.speechPaused = false;
   state.speechProgress = 0;
   state.speechElapsedMs = 0;
   state.speechStartedAt = null;
   state.speechEstimatedDuration = 0;
   state.speechResumeChar = 0;
   state.speechBoundaryChar = 0;
-  state.speechPaused = false;
+  state.speechToken += 1;
   syncSpeechProgressVisuals();
   syncSpeechControlVisual();
 }
@@ -540,12 +556,18 @@ function resetSpeechProgress() {
 function updateSpeechProgressNow() {
   if (!state.speechPlaying || state.speechPaused || state.speechStartedAt == null) return;
   const elapsed = state.speechElapsedMs + Math.max(0, performance.now() - state.speechStartedAt);
-  state.speechProgress = Math.min(0.99, elapsed / Math.max(1, state.speechEstimatedDuration));
-  const textLength = state.selected?.text?.length || 0;
-  if (textLength) {
-    state.speechResumeChar = Math.max(state.speechResumeChar, Math.min(textLength - 1, Math.floor(state.speechProgress * textLength)));
+  const nextProgress = Math.min(0.995, elapsed / Math.max(1, state.speechEstimatedDuration));
+  if (nextProgress > state.speechProgress) {
+    state.speechProgress = nextProgress;
+    const textLength = state.selected?.text?.length || 0;
+    if (textLength) {
+      state.speechResumeChar = Math.max(
+        state.speechResumeChar,
+        Math.min(textLength - 1, Math.floor(state.speechProgress * textLength))
+      );
+    }
+    syncSpeechProgressVisuals();
   }
-  syncSpeechProgressVisuals();
 }
 
 function startSpeechProgressLoop() {
@@ -560,21 +582,31 @@ function startSpeechProgressLoop() {
 
 function pauseSpeech() {
   if (!state.speechPlaying || state.speechPaused) return;
+
+  // Capture the exact UI position before changing any speech-engine state.
   updateSpeechProgressNow();
+  const pausedProgress = Math.max(0, Math.min(1, state.speechProgress));
   const textLength = state.selected?.text?.length || 0;
   if (textLength) {
-    state.speechResumeChar = Math.max(0, Math.min(textLength - 1, Math.floor(state.speechProgress * textLength)));
+    state.speechResumeChar = Math.max(
+      0,
+      Math.min(textLength - 1, Math.floor(pausedProgress * textLength))
+    );
   }
-  state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
+  state.speechElapsedMs = pausedProgress * state.speechEstimatedDuration;
   state.speechStartedAt = null;
   state.speechPlaying = false;
   state.speechPaused = true;
   stopSpeechTimer();
-  // Cancel the current utterance instead of relying on SpeechSynthesis.pause().
-  // Browsers can report paused speech as non-speaking and can lose the native
-  // paused position. We preserve the position ourselves and resume from it.
+
+  // Invalidate the old utterance before canceling it. Some browsers fire
+  // onend/onerror asynchronously after cancel(); those callbacks must not
+  // change the saved paused position.
   state.speechToken += 1;
-  speechSynthesis.cancel();
+  try { speechSynthesis.cancel(); } catch {}
+
+  // IMPORTANT: do not call render() here. The existing DOM is deliberately
+  // left untouched so the white dot and colored track cannot jump to 0.
   syncSpeechProgressVisuals();
   syncSpeechControlVisual();
 }
@@ -583,12 +615,17 @@ function speakSelectedFromOffset() {
   if (!state.selected) return;
   const fullText = state.selected.text;
   const textLength = fullText.length;
+  if (!textLength) return;
+
   const offset = Math.max(0, Math.min(textLength - 1, state.speechResumeChar || 0));
   const remainingText = fullText.slice(offset);
   if (!remainingText) {
     state.speechProgress = 1;
     state.speechPlaying = false;
     state.speechPaused = false;
+    state.speechElapsedMs = state.speechEstimatedDuration || 0;
+    state.speechStartedAt = null;
+    state.speechResumeChar = textLength;
     syncSpeechProgressVisuals();
     syncSpeechControlVisual();
     return;
@@ -597,14 +634,24 @@ function speakSelectedFromOffset() {
   const utterance = new SpeechSynthesisUtterance(remainingText);
   utterance.lang = 'en-GB';
   utterance.rate = state.speed;
+
+  const token = ++state.speechToken;
+  const fullDuration = Math.max(1800, Math.min(18_000, (textLength * 62) / state.speed));
+  state.speechEstimatedDuration = fullDuration;
+  state.speechElapsedMs = Math.max(0, state.speechProgress * fullDuration);
+  state.speechStartedAt = performance.now();
+  state.speechBoundaryChar = offset;
   state.speechPlaying = true;
   state.speechPaused = false;
-  state.speechStartedAt = performance.now();
-  const token = ++state.speechToken;
-  state.speechEstimatedDuration = Math.max(1800, Math.min(18_000, (textLength * 62) / state.speed));
-  state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
-  state.speechBoundaryChar = offset;
-  stopSpeechTimer();
+
+  // Invalidate/cancel any stale utterance before speaking the resumed one.
+  try { speechSynthesis.cancel(); } catch {}
+  speechSynthesis.speak(utterance);
+
+  // Do not rerender the page; preserve the exact progress-bar DOM position.
+  syncSpeechProgressVisuals();
+  syncSpeechControlVisual();
+  startSpeechProgressLoop();
 
   utterance.onboundary = (event) => {
     if (token !== state.speechToken || state.speechPaused) return;
@@ -612,10 +659,10 @@ function speakSelectedFromOffset() {
     const absoluteChar = Math.min(textLength - 1, offset + event.charIndex);
     state.speechBoundaryChar = Math.max(state.speechBoundaryChar, absoluteChar);
     state.speechResumeChar = state.speechBoundaryChar;
-    const boundaryProgress = Math.max(0, Math.min(0.99, absoluteChar / textLength));
+    const boundaryProgress = Math.max(0, Math.min(0.995, absoluteChar / textLength));
     if (boundaryProgress > state.speechProgress) {
       state.speechProgress = boundaryProgress;
-      state.speechElapsedMs = state.speechProgress * state.speechEstimatedDuration;
+      state.speechElapsedMs = state.speechProgress * fullDuration;
       state.speechStartedAt = performance.now();
       syncSpeechProgressVisuals();
     }
@@ -626,7 +673,7 @@ function speakSelectedFromOffset() {
     state.speechPlaying = false;
     state.speechPaused = false;
     state.speechProgress = 1;
-    state.speechElapsedMs = state.speechEstimatedDuration;
+    state.speechElapsedMs = fullDuration;
     state.speechStartedAt = null;
     state.speechResumeChar = textLength;
     state.speechBoundaryChar = textLength;
@@ -639,21 +686,17 @@ function speakSelectedFromOffset() {
     if (token !== state.speechToken || state.speechPaused) return;
     state.speechPlaying = false;
     state.speechPaused = false;
-    resetSpeechProgress();
+    stopSpeechTimer();
+    // Keep the last visible position on an engine error rather than jumping
+    // back to the beginning.
+    syncSpeechProgressVisuals();
     syncSpeechControlVisual();
   };
-
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-  syncSpeechProgressVisuals();
-  syncSpeechControlVisual();
-  startSpeechProgressLoop();
 }
 
 function resumeSpeech() {
   if (!state.speechPaused) return;
-  // Resume from the app-owned character offset, not from the browser's native
-  // paused state. This prevents browsers from restarting the utterance at 0.
+  // Keep state.speechProgress exactly where pauseSpeech left it.
   speakSelectedFromOffset();
 }
 
@@ -673,8 +716,11 @@ function toggleSpeech() {
     return;
   }
 
+  // A fresh Play starts at zero. Resume never reaches this branch.
   state.speechProgress = 0;
   state.speechElapsedMs = 0;
+  state.speechStartedAt = null;
+  state.speechEstimatedDuration = 0;
   state.speechResumeChar = 0;
   state.speechBoundaryChar = 0;
   speakSelectedFromOffset();
