@@ -1,78 +1,3 @@
-const ARTICLES = [
-  {
-    id: 'ai-productivity',
-    category: 'Technology',
-    date: 'Sep 18, 2026',
-    level: 'Upper intermediate',
-    readingTime: 5,
-    title: 'AI is changing where productivity comes from',
-    dek: 'The next gains may come less from faster software and more from better decisions about how work is organised.',
-    tags: ['AI', 'work', 'productivity'],
-    paragraphs: [
-      [
-        'Companies once looked to new software mainly for faster execution.',
-        'Increasingly, the bigger opportunity is to decide which work should be automated, which should remain human and which should be redesigned altogether.'
-      ],
-      [
-        'That shift matters because the cost of generating a first draft, query or analysis is falling rapidly.',
-        'The scarce resource is becoming the judgement required to turn those outputs into useful decisions.'
-      ],
-      [
-        'Managers therefore need to treat AI as a change to the workflow, not simply as another tool in the toolbox.',
-        'Teams that redesign their processes around the technology may see larger gains than teams that merely add a chatbot to an existing routine.'
-      ]
-    ]
-  },
-  {
-    id: 'city-energy',
-    category: 'Economics',
-    date: 'Sep 16, 2026',
-    level: 'Advanced',
-    readingTime: 6,
-    title: 'Cities are learning to price scarce energy',
-    dek: 'As electricity demand grows, local systems are experimenting with signals that encourage consumers to move usage away from crowded periods.',
-    tags: ['energy', 'cities', 'economics'],
-    paragraphs: [
-      [
-        'Electricity networks are built to meet demand at the busiest moments, even though those moments may occur for only a few hours each year.',
-        'That makes peak demand unusually expensive and creates a strong incentive to spread consumption over time.'
-      ],
-      [
-        'Digital meters make it easier to send households and businesses a price signal that changes during the day.',
-        'The idea is simple, but its effects depend on whether consumers understand the signal and have practical ways to respond.'
-      ],
-      [
-        'The challenge for city governments is to balance efficiency with fairness.',
-        'A pricing system can reduce pressure on the grid, yet it should not leave households with limited flexibility paying the highest costs.'
-      ]
-    ]
-  },
-  {
-    id: 'mobility-data',
-    category: 'Cities',
-    date: 'Sep 12, 2026',
-    level: 'Upper intermediate',
-    readingTime: 4,
-    title: 'Better mobility data can change the shape of a city',
-    dek: 'Transport planning is moving from counting vehicles towards understanding how people actually move between places.',
-    tags: ['mobility', 'data', 'urban planning'],
-    paragraphs: [
-      [
-        'For decades, transport agencies often measured success by counting vehicles, estimating travel times and expanding roads where congestion appeared.',
-        'Newer datasets can reveal a more complicated picture of how people move across a city.'
-      ],
-      [
-        'When planners combine travel records with land-use and demographic information, they can see which neighbourhoods have good access to jobs and which do not.',
-        'That can shift the conversation from moving cars faster to improving access to opportunities.'
-      ],
-      [
-        'The hardest part is not collecting another dataset.',
-        'It is deciding how several imperfect sources should be combined without creating false precision or overlooking people who generate little digital trace.'
-      ]
-    ]
-  }
-];
-
 const STORAGE_KEY = 'jenglish-te-saved-v1';
 const UI = {
   articles: 'Articles', saved: 'Saved', thisWeek: 'This week', previous: 'Previous articles',
@@ -81,7 +6,11 @@ const UI = {
 };
 
 const state = {
-  articleId: new URL(location.href).pathname.match(/\/ai\/te\/([^/]+)/)?.[1] || ARTICLES[0].id,
+  articleId: new URL(location.href).pathname.match(/\/ai\/te\/([^/]+)/)?.[1] || null,
+  articles: [],
+  currentArticle: null,
+  loading: true,
+  loadError: '',
   selected: null,
   aiMessages: [],
   busy: false,
@@ -92,17 +21,22 @@ const state = {
   lang: 'ja',
   speed: 1,
   speechToken: 0,
+  speechPlaying: false,
 };
 
 function loadSaved() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
 }
 function persistSaved() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.saved)); }
-function article() { return ARTICLES.find(a => a.id === state.articleId) || ARTICLES[0]; }
+function article() { return state.currentArticle; }
 function sentenceText() { return state.selected?.text || ''; }
-function sentenceContext() { return state.selected?.paragraph?.join(' ') || ''; }
+function sentenceContext() { return state.selected?.paragraph?.sentences?.map(s => s.text).join(' ') || ''; }
+function formatDate(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
+}
 function escapeHtml(text) {
-  return text.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  return String(text ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;',"\"":'&quot;'}[c]));
 }
 function icon(name) {
   const icons = {
@@ -121,6 +55,11 @@ function icon(name) {
 
 function render() {
   const a = article();
+  if (!a) {
+    document.querySelector('#app').innerHTML = state.loadError ? `\n      <div class="setup-state"><div class="eyebrow">CONTENT API</div><h1>Articles are not available yet.</h1><p>${escapeHtml(state.loadError)}</p><button class="primary-button" data-retry-content>Retry</button><p class="setup-note">The Phase 1/2 backend expects PostgreSQL. See README.md for migration and seed commands.</p></div>` : `\n      <div class="setup-state"><div class="eyebrow">LOADING CONTENT</div><h1>Loading the reading library…</h1><p>Connecting to the article API.</p></div>`;
+    document.querySelector('[data-retry-content]')?.addEventListener('click', initContent);
+    return;
+  }
   const savedCount = state.saved.length;
   const selectedId = state.selected?.id;
 
@@ -148,14 +87,14 @@ function render() {
           <button class="sidebar-link is-current" data-nav="articles">${icon('spark')} ${UI.thisWeek}</button>
           <button class="sidebar-link" data-nav="previous">${icon('chevron')} ${UI.previous}</button>
           <div class="sidebar-heading">ARTICLES</div>
-          <div class="article-list">${ARTICLES.map(item => `
-            <button class="article-item ${item.id === a.id ? 'is-selected' : ''}" data-article="${item.id}">
+          <div class="article-list">${state.articles.map(item => `
+            <button class="article-item ${item.slug === a.slug ? 'is-selected' : ''}" data-article="${item.slug}">
               <span class="article-item-dot"></span>
               <span class="article-item-text">
                 <strong>${escapeHtml(item.title)}</strong>
                 <small>${escapeHtml(item.category)} · ${item.readingTime} min</small>
               </span>
-              ${item.id === a.id ? `<span class="article-item-arrow">${icon('chevron')}</span>` : ''}
+              ${item.slug === a.slug ? `<span class="article-item-arrow">${icon('chevron')}</span>` : ''}
             </button>`).join('')}</div>
           <div class="sidebar-footer">
             <div class="mini-stat"><span>Level</span><strong>${escapeHtml(a.level)}</strong></div>
@@ -167,7 +106,7 @@ function render() {
           <div class="reader-topline">
             <span>${escapeHtml(a.category)}</span>
             <span class="dot-sep">•</span>
-            <span>${escapeHtml(a.date)}</span>
+            <span>${escapeHtml(formatDate(a.date))}</span>
             <span class="dot-sep">•</span>
             <span>${a.readingTime} min read</span>
           </div>
@@ -176,10 +115,10 @@ function render() {
             <p class="article-dek">${escapeHtml(a.dek)}</p>
             <div class="article-meta"><span class="level-pill">${escapeHtml(a.level)}</span>${a.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
             <div class="article-body">
-              ${a.paragraphs.map((paragraph, pIdx) => `<p>${paragraph.map((text, sIdx) => {
-                const id = `${a.id}-${pIdx}-${sIdx}`;
+              ${a.paragraphs.map((paragraph, pIdx) => `<p>${paragraph.sentences.map((sentence, sIdx) => {
+                const id = String(sentence.id);
                 const isSelected = id === selectedId;
-                return `<button class="sentence ${isSelected ? 'is-selected' : ''}" data-sentence="${id}" data-pidx="${pIdx}" data-sidx="${sIdx}" aria-pressed="${isSelected}">${escapeHtml(text)}</button>`;
+                return `<button class="sentence ${isSelected ? 'is-selected' : ''}" data-sentence="${id}" data-pidx="${pIdx}" data-sidx="${sIdx}" aria-pressed="${isSelected}">${escapeHtml(sentence.text)}</button>`;
               }).join(' ')}</p>`).join('')}
             </div>
             <div class="reader-endnote">
@@ -273,24 +212,23 @@ function bindEvents() {
     closeDrawer(); render();
   }));
 
-  document.querySelector('[data-nav-home]')?.addEventListener('click', (e) => { e.preventDefault(); state.articleId = ARTICLES[0].id; history.pushState({}, '', '/ai/te'); state.selected = null; state.aiMessages = []; state.aiError=''; render(); });
+  document.querySelector('[data-nav-home]')?.addEventListener('click', async (e) => { e.preventDefault(); const first = state.articles[0]; if (!first) return; history.pushState({}, '', '/ai/te'); await loadArticle(first.slug, false); });
 
-  document.querySelectorAll('[data-article]').forEach(btn => btn.addEventListener('click', () => {
-    state.articleId = btn.dataset.article;
-    state.selected = null;
-    state.aiMessages = [];
-    state.aiError = '';
+  document.querySelectorAll('[data-article]').forEach(btn => btn.addEventListener('click', async () => {
     state.activeNav = 'articles';
-    history.pushState({}, '', `/ai/te/${state.articleId}`);
-    closeDrawer(); render();
+    history.pushState({}, '', `/ai/te/${btn.dataset.article}`);
+    closeDrawer();
+    await loadArticle(btn.dataset.article, false);
   }));
 
   document.querySelectorAll('[data-sentence]').forEach(btn => btn.addEventListener('click', () => {
     const a = article();
     const pIdx = Number(btn.dataset.pidx), sIdx = Number(btn.dataset.sidx);
+    const sentence = a.paragraphs[pIdx]?.sentences?.[sIdx];
+    if (!sentence) return;
     state.selected = {
-      id: btn.dataset.sentence,
-      text: a.paragraphs[pIdx][sIdx],
+      id: String(sentence.id),
+      text: sentence.text,
       paragraph: a.paragraphs[pIdx],
       pIdx,
       sIdx,
@@ -314,6 +252,59 @@ function bindEvents() {
   document.querySelector('[data-lang-toggle]')?.addEventListener('click', () => showToast(state.lang === 'ja' ? 'English UI is a lightweight MVP toggle.' : '日本語 UI is active.'));
   document.querySelector('[data-retry]')?.addEventListener('click', () => state.selected ? runAi('explain') : null);
   document.querySelector('[data-save-article]')?.addEventListener('click', saveArticle);
+}
+
+
+async function apiJson(url, options = {}) {
+  const response = await fetch(url, { headers: { Accept: 'application/json', ...(options.headers || {}) }, ...options });
+  let data = {};
+  try { data = await response.json(); } catch { /* preserve useful HTTP error below */ }
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  return data;
+}
+
+async function initContent() {
+  state.loading = true;
+  state.loadError = '';
+  render();
+  try {
+    const { articles } = await apiJson('/api/articles');
+    state.articles = articles || [];
+    if (!state.articles.length) throw new Error('No published articles were returned by the content API.');
+    const requested = state.articleId && state.articles.some(item => item.slug === state.articleId) ? state.articleId : state.articles[0].slug;
+    if (!state.articleId || state.articleId !== requested) {
+      state.articleId = requested;
+      history.replaceState({}, '', requested ? `/ai/te/${requested}` : '/ai/te');
+    }
+    await loadArticle(requested, false);
+  } catch (error) {
+    state.loading = false;
+    state.loadError = error instanceof Error ? error.message : 'Unable to load the article API.';
+    render();
+  }
+}
+
+async function loadArticle(slug, push = true) {
+  if (!slug) return;
+  state.loading = true;
+  state.loadError = '';
+  state.selected = null;
+  state.aiMessages = [];
+  state.aiError = '';
+  state.articleId = slug;
+  if (push) history.pushState({}, '', `/ai/te/${slug}`);
+  render();
+  try {
+    const { article: data } = await apiJson(`/api/articles/${encodeURIComponent(slug)}`);
+    state.currentArticle = data;
+    state.loading = false;
+    render();
+  } catch (error) {
+    state.currentArticle = null;
+    state.loading = false;
+    state.loadError = error instanceof Error ? error.message : 'Unable to load this article.';
+    render();
+  }
 }
 
 function closeDrawer() { state.drawerOpen = false; render(); }
@@ -375,9 +366,10 @@ function nextSentence() {
   if (!state.selected) return showToast('まず記事の文を選択してください。');
   const a = article();
   let p = state.selected.pIdx, s = state.selected.sIdx + 1;
-  if (s >= a.paragraphs[p].length) { p++; s = 0; }
+  if (s >= a.paragraphs[p].sentences.length) { p++; s = 0; }
   if (p >= a.paragraphs.length) { p = 0; s = 0; }
-  state.selected = { id:`${a.id}-${p}-${s}`, text:a.paragraphs[p][s], paragraph:a.paragraphs[p], pIdx:p, sIdx:s };
+  const sentence = a.paragraphs[p].sentences[s];
+  state.selected = { id:String(sentence.id), text:sentence.text, paragraph:a.paragraphs[p], pIdx:p, sIdx:s };
   state.drawerOpen = true;
   render();
 }
@@ -400,7 +392,7 @@ function saveArticle() {
 function renderSavedOverlay() {
   const overlay = document.createElement('div'); overlay.className = 'overlay';
   overlay.innerHTML = `<div class="saved-modal"><div class="saved-modal-head"><div><div class="eyebrow">SAVED</div><h2>Saved learning items</h2></div><button class="panel-close" data-close>${icon('x')}</button></div>
-  <div class="saved-list">${state.saved.length ? state.saved.map((x,i)=>`<div class="saved-row"><div><small>${escapeHtml(x.kind)}</small><strong>${escapeHtml(x.text || x.title)}</strong>${x.articleId ? `<span>${escapeHtml(ARTICLES.find(a=>a.id===x.articleId)?.title || '')}</span>`:''}</div><button data-remove="${i}">Remove</button></div>`).join('') : `<div class="saved-empty"><div class="ai-empty-icon">${icon('bookmark')}</div><h3>No saved items yet</h3><p>Save a sentence or article while you read.</p></div>`}</div></div>`;
+  <div class="saved-list">${state.saved.length ? state.saved.map((x,i)=>`<div class="saved-row"><div><small>${escapeHtml(x.kind)}</small><strong>${escapeHtml(x.text || x.title)}</strong>${x.articleId ? `<span>${escapeHtml(state.articles.find(a=>String(a.id)===String(x.articleId))?.title || '')}</span>`:''}</div><button data-remove="${i}">Remove</button></div>`).join('') : `<div class="saved-empty"><div class="ai-empty-icon">${icon('bookmark')}</div><h3>No saved items yet</h3><p>Save a sentence or article while you read.</p></div>`}</div></div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.closest('[data-close]')) overlay.remove(); });
   overlay.querySelectorAll('[data-remove]').forEach(btn => btn.addEventListener('click', () => { state.saved.splice(Number(btn.dataset.remove),1); persistSaved(); overlay.remove(); renderSavedOverlay(); render(); }));
@@ -423,7 +415,8 @@ document.addEventListener('click', (e) => {
   }
 });
 window.addEventListener('popstate', () => {
-  state.articleId = new URL(location.href).pathname.match(/\/ai\/te\/([^/]+)/)?.[1] || ARTICLES[0].id;
-  state.selected = null; state.aiMessages = []; state.aiError = ''; render();
+  const slug = new URL(location.href).pathname.match(/\/ai\/te\/([^/]+)/)?.[1] || state.articles[0]?.slug;
+  if (slug) loadArticle(slug, false);
 });
 render();
+initContent();

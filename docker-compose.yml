@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jenglish
+      POSTGRES_USER: jenglish
+      POSTGRES_PASSWORD: jenglish
+    ports:
+      - "5432:5432"
+    volumes:
+      - jenglish-postgres:/var/lib/postgresql/data
+
+volumes:
+  jenglish-postgres:

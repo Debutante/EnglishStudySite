@@ -174,3 +174,38 @@ body.dark .audio-bar { background:rgba(29,35,34,.96); }
   .article-body p { font-size:17px; }
   .audio-controls select { display:none; }
 }
+
+.setup-state {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 40px;
+  text-align: center;
+  background: var(--paper);
+}
+.setup-state h1 {
+  margin: 0;
+  max-width: 680px;
+  font-family: var(--serif);
+  font-size: clamp(2.2rem, 5vw, 4.4rem);
+  line-height: 1.02;
+}
+.setup-state p {
+  margin: 0 auto;
+  max-width: 650px;
+  color: var(--muted);
+}
+.setup-note {
+  font-size: 0.85rem;
+}
+.primary-button {
+  justify-self: center;
+  margin-top: 10px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  padding: 10px 18px;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+}
