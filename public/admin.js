@@ -24,20 +24,38 @@ function slugify(value){
 function renderEditor(a){
   const content=(a.paragraphs||[]).map(p=>p.sentences.map(s=>s.text).join(' ')).join('\n\n');
   const tags=(a.tags||[]).join(', ');
-  return `<div class="panel-head" style="margin:-20px -20px 18px"><strong>${a.status==='draft'?'编辑草稿':'编辑文章'}</strong><span class="status ${esc(a.status)}">${esc(a.status)}</span></div><div class="field-grid"><div class="field"><label>Title</label><input id="f-title" value="${esc(a.title)}" autocomplete="off"></div><div class="field"><label>Slug（自动生成）</label><input id="f-slug" value="${esc(a.slug||slugify(a.title))}" readonly aria-readonly="true"><small class="note">保存时始终根据标题自动生成；如果重复会自动添加编号。</small></div><div class="field"><label>Subtitle</label><input id="f-subtitle" value="${esc(a.dek)}"></div><div class="field"><label>Level</label><input id="f-level" value="${esc(a.level)}"></div><div class="field"><label>Category</label><input id="f-category" value="${esc(a.category)}"></div><div class="field"><label>Status</label><select id="f-status"><option ${a.status==='draft'?'selected':''}>draft</option><option ${a.status==='review'?'selected':''}>review</option><option ${a.status==='published'?'selected':''}>published</option><option ${a.status==='archived'?'selected':''}>archived</option></select></div><div class="field"><label>Reading time</label><input id="f-reading" type="number" min="1" value="${a.readingTime||5}"></div><div class="field"><label>Tags</label><input id="f-tags" value="${esc(tags)}" placeholder="AI, work, productivity"></div><div class="field full"><label>Cover image URL</label><input id="f-cover" value="${esc(a.coverImageUrl||'')}" placeholder="/assets/thumb-technology.svg"></div><div class="field full"><label>Article content · separate paragraphs with a blank line</label><textarea id="f-content">${esc(content)}</textarea></div></div><div class="editor-actions"><button class="btn primary" id="save-article" ${state.saving?'disabled':''}>${state.saving?'保存中…':'保存新版本'}</button>${a.status!=='published' && a.slug?'<button class="btn accent" id="publish-article">发布</button>':''}<button class="btn" id="translate-article">生成中文翻译</button><button class="btn" id="pack-ai">生成全部句子学习内容</button></div><section class="generation"><h2>AI 生成</h2><p class="note">生成结果保存在当前文章版本中。中文翻译会出现在阅读器的“中文 / EN”按钮中；句子学习内容会被阅读器直接复用。</p><div class="generation-grid"><button class="generation-card" id="open-reader" ${a.slug?'':'disabled'}><strong>打开阅读器</strong><small>${a.slug?`/ai/te/${esc(a.slug)}`:'保存后可打开'}</small></button><button class="generation-card" id="refresh-article" ${a.slug?'':'disabled'}><strong>刷新文章</strong><small>重新读取数据库中的最新版本</small></button></div></section>`;
+  return `<div class="panel-head" style="margin:-20px -20px 18px"><strong>${a.status==='draft'?'编辑草稿':'编辑文章'}</strong><span class="status ${esc(a.status)}">${esc(a.status)}</span></div><div class="field-grid"><div class="field"><label>Title</label><input id="f-title" value="${esc(a.title)}" autocomplete="off"></div><div class="field"><label>Slug（自动生成）</label><input id="f-slug" value="${esc(a.slug||slugify(a.title))}" readonly aria-readonly="true"><small class="note">保存时始终根据标题自动生成；如果重复会自动添加编号。</small></div><div class="field"><label>Subtitle</label><input id="f-subtitle" value="${esc(a.dek)}"></div><div class="field"><label>Level</label><input id="f-level" value="${esc(a.level)}"></div><div class="field"><label>Category</label><select id="f-category-select">${state.categories.map(c=>`<option value="${esc(c.name)}" ${a.category===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}<option value="__other__" ${a.category && !state.categories.some(c=>c.name===a.category)?'selected':''}>Other</option></select><input id="f-category-other" value="${esc(a.category && !state.categories.some(c=>c.name===a.category)?a.category:'')}" placeholder="Enter another category" style="display:${a.category && !state.categories.some(c=>c.name===a.category)?'block':'none'}"></div><div class="field"><label>Status</label><select id="f-status"><option ${a.status==='draft'?'selected':''}>draft</option><option ${a.status==='review'?'selected':''}>review</option><option ${a.status==='published'?'selected':''}>published</option><option ${a.status==='archived'?'selected':''}>archived</option></select></div><div class="field"><label>Reading time</label><input id="f-reading" type="number" min="1" value="${a.readingTime||5}"></div><div class="field"><label>Tags</label><input id="f-tags" value="${esc(tags)}" placeholder="AI, work, productivity"></div><div class="field full"><label>Cover image URL</label><input id="f-cover" value="${esc(a.coverImageUrl||'')}" placeholder="/assets/thumb-technology.svg"></div><div class="field full"><label>Article content · separate paragraphs with a blank line</label><textarea id="f-content">${esc(content)}</textarea></div></div><div class="editor-actions"><button class="btn primary" id="save-article" ${state.saving?'disabled':''}>${state.saving?'保存中…':'保存新版本'}</button>${a.status!=='published' && a.slug?'<button class="btn accent" id="publish-article">发布</button>':''}<button class="btn" id="generate-cover">根据文章生成封面</button><button class="btn" id="translate-article">生成中文翻译</button><button class="btn" id="pack-ai">生成全部句子学习内容</button></div><section class="generation"><h2>AI 生成</h2><p class="note">生成结果保存在当前文章版本中。中文翻译会出现在阅读器的“中文 / EN”按钮中；句子学习内容会被阅读器直接复用。</p><div class="generation-grid"><button class="generation-card" id="open-reader" ${a.slug?'':'disabled'}><strong>打开阅读器</strong><small>${a.slug?`/ai/te/${esc(a.slug)}`:'保存后可打开'}</small></button><button class="generation-card" id="refresh-article" ${a.slug?'':'disabled'}><strong>刷新文章</strong><small>重新读取数据库中的最新版本</small></button></div></section>`;
 }
 function formData(){
   const content=document.querySelector('#f-content').value.trim();
   const paragraphs=content.split(/\n\s*\n/).map(p=>p.split(/(?<=[.!?])\s+/).map(x=>x.trim()).filter(Boolean)).filter(x=>x.length);
   const title=document.querySelector('#f-title').value.trim();
-  const category=document.querySelector('#f-category').value.trim()||'General';
-  return {title,slug:slugify(title),subtitle:document.querySelector('#f-subtitle').value.trim(),level:document.querySelector('#f-level').value.trim(),category,categorySlug:slugify(category),status:document.querySelector('#f-status').value,readingTime:Number(document.querySelector('#f-reading').value||5),tags:document.querySelector('#f-tags').value.split(',').map(x=>x.trim()).filter(Boolean),coverImageUrl:document.querySelector('#f-cover').value.trim(),paragraphs,sourceName:'JEnglish',copyrightNote:'Authorized editorial content.'};
+  const selectedCategory=document.querySelector('#f-category-select').value;
+  const otherCategory=document.querySelector('#f-category-other')?.value.trim()||'';
+  const category=(selectedCategory==='__other__' ? otherCategory : selectedCategory).trim()||'Other';
+  return {title,slug:slugify(title),subtitle:document.querySelector('#f-subtitle').value.trim(),level:document.querySelector('#f-level').value.trim(),category,categorySlug:slugify(category),categoryName:category,status:document.querySelector('#f-status').value,readingTime:Number(document.querySelector('#f-reading').value||5),tags:document.querySelector('#f-tags').value.split(',').map(x=>x.trim()).filter(Boolean),coverImageUrl:document.querySelector('#f-cover').value.trim(),paragraphs,sourceName:'JEnglish',copyrightNote:'Authorized editorial content.'};
 }
 async function loadArticles(){ const d=await api(`/api/admin/articles${state.filter?`?status=${encodeURIComponent(state.filter)}`:''}`); state.articles=d.articles||[]; if(state.selected){const match=state.articles.find(x=>x.slug===state.selected.slug); if(match) await selectArticle(match.slug); else state.selected=null;} }
+async function loadCategories(){ const d=await api('/api/admin/categories'); state.categories=d.categories||[]; }
 async function selectArticle(slug){ const d=await api(`/api/admin/articles/${encodeURIComponent(slug)}`); state.selected=d.article; render(); }
-async function createNew(){state.selected={slug:'',title:'',dek:'',level:'Upper intermediate',category:'Technology',status:'draft',readingTime:5,tags:[],coverImageUrl:'/assets/thumb-technology.svg',paragraphs:[{sentences:[{text:'Write the first sentence of your article here.'},{text:'Add another sentence to continue the paragraph.'}]}]};render();}
-async function saveArticle(){state.saving=true;state.error='';render();try{const body=formData();let d;if(state.selected?.slug){d=await api(`/api/admin/articles/${encodeURIComponent(state.selected.slug)}`,{method:'PATCH',body:JSON.stringify(body)});}else{d=await api('/api/admin/articles',{method:'POST',body:JSON.stringify(body)});}state.selected=d.article;await loadArticles();state.selected=d.article;toast('文章已保存');render();}catch(e){state.error=e.message;render();}finally{state.saving=false;}}
+async function createNew(){state.selected={slug:'',title:'',dek:'',level:'Upper intermediate',category:'Technology',status:'draft',readingTime:5,tags:[],coverImageUrl:'',paragraphs:[{sentences:[{text:'Write the first sentence of your article here.'},{text:'Add another sentence to continue the paragraph.'}]}]};render();}
+async function saveArticle(){
+  let body;
+  try { body=formData(); } catch (error) { state.error=error.message; render(); return; }
+  state.saving=true;state.error='';render();
+  try{
+    let d;if(state.selected?.slug){d=await api(`/api/admin/articles/${encodeURIComponent(state.selected.slug)}`,{method:'PATCH',body:JSON.stringify(body)});}else{d=await api('/api/admin/articles',{method:'POST',body:JSON.stringify(body)});}
+    state.selected=d.article;await loadArticles();state.selected=d.article;toast('文章已保存');render();
+  }catch(e){state.error=e.message;render();}finally{state.saving=false;}
+}
+
 async function publish(){state.error='';try{const d=await api(`/api/admin/articles/${encodeURIComponent(state.selected.slug)}/publish`,{method:'POST'});state.selected=d.article;await loadArticles();render();toast('文章已发布');}catch(e){state.error=e.message;render();}}
+async function generateCover(){
+  if(!state.selected?.slug){toast('请先保存文章，再生成封面。');return;}
+  state.generating=true;state.error='';render();
+  try{ const d=await api(`/api/admin/articles/${encodeURIComponent(state.selected.slug)}/generate-cover`,{method:'POST'}); state.selected=d.article; toast('封面已根据文章内容生成'); render(); }
+  catch(e){state.error=e.message;render();} finally{state.generating=false;}
+}
 async function generate(kind){
   if(!state.selected?.slug){toast('请先保存文章，再生成 AI 内容。');return;}
   state.generating=true;state.error='';render();
@@ -49,18 +67,20 @@ async function generate(kind){
   finally{state.generating=false;}
 }
 function bind(){
-  document.querySelector('#login-btn')?.addEventListener('click',()=>{state.key=document.querySelector('#login-key').value.trim();state.error='';api('/api/admin/articles').then(()=>{sessionStorage.setItem(ADMIN_KEY,state.key);state.authenticated=true;return loadArticles();}).then(render).catch(e=>{state.error=e.message;render();})});
+  document.querySelector('#login-btn')?.addEventListener('click',()=>{state.key=document.querySelector('#login-key').value.trim();state.error='';api('/api/admin/articles').then(async()=>{sessionStorage.setItem(ADMIN_KEY,state.key);state.authenticated=true;await loadCategories();await loadArticles();}).then(render).catch(e=>{state.error=e.message;render();})});
   document.querySelector('#login-key')?.addEventListener('keydown',e=>{if(e.key==='Enter')document.querySelector('#login-btn').click();});
   document.querySelector('#logout')?.addEventListener('click',()=>{sessionStorage.removeItem(ADMIN_KEY);state.key='';state.authenticated=false;state.selected=null;render();});
   document.querySelector('#filter')?.addEventListener('change',async e=>{state.filter=e.target.value;try{await loadArticles();render();}catch(err){state.error=err.message;render();}});
   document.querySelectorAll('[data-select]').forEach(b=>b.addEventListener('click',()=>selectArticle(b.dataset.select).catch(e=>{state.error=e.message;render();})));
   document.querySelector('#new-article')?.addEventListener('click',createNew);
+  document.querySelector('#f-category-select')?.addEventListener('change', (e) => { const other=document.querySelector('#f-category-other'); if(other) other.style.display=e.target.value==='__other__'?'block':'none'; });
   document.querySelector('#f-title')?.addEventListener('input', (e) => {
     const slug = document.querySelector('#f-slug');
     if (slug) slug.value = slugify(e.currentTarget.value);
   });
   document.querySelector('#save-article')?.addEventListener('click',saveArticle);
   document.querySelector('#publish-article')?.addEventListener('click',publish);
+  document.querySelector('#generate-cover')?.addEventListener('click',generateCover);
   document.querySelector('#translate-article')?.addEventListener('click',()=>generate('article_translate'));
   document.querySelector('#pack-ai')?.addEventListener('click',()=>generate('sentence_pack'));
   document.querySelector('#open-reader')?.addEventListener('click',()=>window.open(`/ai/te/${encodeURIComponent(state.selected.slug)}`,'_blank'));
@@ -69,6 +89,6 @@ function bind(){
 
 (async()=>{
   if(!state.key){render();return;}
-  try{await api('/api/admin/articles');state.authenticated=true;await loadArticles();}catch(e){sessionStorage.removeItem(ADMIN_KEY);state.key='';state.error=e.message;}
+  try{await api('/api/admin/articles');state.authenticated=true;await loadCategories();await loadArticles();}catch(e){sessionStorage.removeItem(ADMIN_KEY);state.key='';state.error=e.message;}
   render();
 })();

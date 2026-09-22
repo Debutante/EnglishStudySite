@@ -91,4 +91,5 @@ test('admin page is directly servable', async () => {
 test('auto-generates URL-safe slugs from titles, including Unicode', () => {
   assert.equal(normalizeSlug('The New Geography of Remote Work'), 'the-new-geography-of-remote-work');
   assert.equal(normalizeSlug('人工智能改变城市'), '人工智能改变城市');
+  assert.equal(normalizeSlug('The New Geography of Remote Work'), 'the-new-geography-of-remote-work');
 });

@@ -6,6 +6,7 @@ import {
   aiResponse,
   serveStatic,
   normalizeAiRequest,
+  generateEditorialCoverSvg,
 } from './server-core.mjs';
 import {
   getCachedAiGeneration,
@@ -19,6 +20,7 @@ import {
   updateArticleBySlug,
   publishArticle,
   upsertAiGeneration,
+  setArticleCoverBySlug,
 } from './db/postgres.mjs';
 
 const PORT = Number(process.env.PORT || 4173);
@@ -103,7 +105,7 @@ function articleToText(article) {
 }
 
 async function runAiAndCache({ request, article, sentenceId = null }) {
-  const language = request.mode === 'article_translate' || request.mode !== 'simplify' ? 'zh-CN' : 'en';
+  const language = request.mode === 'simplify' ? 'en' : 'zh-CN';
   const kind = request.mode;
   if (kind !== 'chat') {
     const cached = await getCachedAiGeneration({
@@ -156,6 +158,36 @@ async function handleAi(req, res) {
   json(res, 200, result, { 'Cache-Control': 'private, max-age=60' });
 }
 
+async function ensureGeneratedCover(article) {
+  if (!article || article.coverImageUrl) return article;
+  const svg = generateEditorialCoverSvg({
+    title: article.title,
+    subtitle: article.dek,
+    category: article.category,
+    tags: article.tags,
+  });
+  const coverDir = path.join(process.cwd(), 'public', 'generated-covers');
+  await fs.mkdir(coverDir, { recursive: true });
+  const fileName = `${article.slug}.svg`;
+  await fs.writeFile(path.join(coverDir, fileName), svg, 'utf8');
+  return setArticleCoverBySlug(article.slug, `/generated-covers/${encodeURIComponent(article.slug)}.svg`);
+}
+
+async function generateCover(article, { force = true } = {}) {
+  if (!article) return null;
+  const svg = generateEditorialCoverSvg({
+    title: article.title,
+    subtitle: article.dek,
+    category: article.category,
+    tags: article.tags,
+  });
+  const coverDir = path.join(process.cwd(), 'public', 'generated-covers');
+  await fs.mkdir(coverDir, { recursive: true });
+  const fileName = `${article.slug}.svg`;
+  await fs.writeFile(path.join(coverDir, fileName), svg, 'utf8');
+  return setArticleCoverBySlug(article.slug, `/generated-covers/${encodeURIComponent(article.slug)}.svg`);
+}
+
 async function handleAdmin(req, res, parts, url) {
   if (!requireAdmin(req, res)) return true;
 
@@ -180,7 +212,8 @@ async function handleAdmin(req, res, parts, url) {
       const body = await readJsonBody(req);
       const result = await updateArticleBySlug(slug, body);
       if (!result) return json(res, 404, { error: 'Article not found.' });
-      const article = await getAdminArticleBySlug(result.slug);
+      let article = await getAdminArticleBySlug(result.slug);
+      article = await ensureGeneratedCover(article);
       return json(res, 200, { article });
     }
 
@@ -190,12 +223,19 @@ async function handleAdmin(req, res, parts, url) {
       return json(res, 200, { article });
     }
 
+    if (req.method === 'POST' && parts[4] === 'generate-cover' && parts.length === 5) {
+      const article = await getAdminArticleBySlug(slug);
+      if (!article) return json(res, 404, { error: 'Article not found.' });
+      const updated = await generateCover(article);
+      return json(res, 200, { article: updated });
+    }
+
     if (req.method === 'POST' && parts[4] === 'generate' && parts.length === 5) {
       const body = await readJsonBody(req);
       const article = await getAdminArticleBySlug(slug);
       if (!article) return json(res, 404, { error: 'Article not found.' });
       const kind = String(body.kind || 'article_translate');
-      const allowed = new Set(['article_translate', 'explain', 'translate', 'grammar', 'vocabulary', 'simplify', 'sentence_pack']);
+      const allowed = new Set(['article_translate', 'explain', 'chinese', 'translate', 'grammar', 'vocabulary', 'simplify', 'sentence_pack']);
       if (!allowed.has(kind)) return json(res, 400, { error: 'Unsupported generation type.' });
 
       if (kind === 'article_translate') {
@@ -210,7 +250,7 @@ async function handleAdmin(req, res, parts, url) {
         let generated = 0;
         for (const paragraph of article.paragraphs) {
           for (const sentence of paragraph.sentences) {
-            for (const mode of ['explain', 'translate', 'grammar', 'vocabulary', 'simplify']) {
+            for (const mode of ['explain', 'chinese', 'translate', 'grammar', 'vocabulary', 'simplify']) {
               const request = normalizeAiRequest({
                 mode,
                 articleId: article.id,
@@ -247,7 +287,8 @@ async function handleAdmin(req, res, parts, url) {
   if (req.method === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts.length === 3) {
     const body = await readJsonBody(req);
     const result = await createArticle(body);
-    const article = await getAdminArticleBySlug(result.slug);
+    let article = await getAdminArticleBySlug(result.slug);
+    article = await ensureGeneratedCover(article);
     return json(res, 201, { article });
   }
 

@@ -467,6 +467,16 @@ async function saveArticle(existing, input) {
   });
 }
 
+export async function setArticleCoverBySlug(slug, coverImageUrl) {
+  const result = await query(`
+    UPDATE articles
+    SET cover_image_url = $1, updated_at = NOW()
+    WHERE slug = $2
+    RETURNING slug
+  `, [coverImageUrl, slug]);
+  return result.rowCount ? getAdminArticleBySlug(slug) : null;
+}
+
 export async function publishArticle(slug) {
   const existing = await getArticleRecord(slug, { publishedOnly: false });
   if (!existing) return null;

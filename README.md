@@ -169,3 +169,26 @@ The seeded articles and thumbnails are original demo content/assets. The schema 
 
 ### Article slugs
 Article slugs are generated automatically from the article title when an article is saved. Duplicate titles receive a numeric suffix, and Unicode titles are supported.
+
+
+## Recent CMS and reader fixes
+
+The current build includes:
+
+- draft saves that read form values before rerendering
+- category selection from database categories with an `Other` option
+- automatic slug generation from the title
+- generated editorial SVG covers based on title/subtitle/category/tags
+- a `POST /api/admin/articles/:slug/generate-cover` endpoint
+- a global `中文 / EN` language switch that changes reader UI and article passage language
+- sentence playback progress with a moving progress dot
+- six sentence AI actions: 解释 / 中文 / 翻译 / 语法 / 词汇 / 简化英语
+- migration `003_ai_chinese.sql` for the persisted `chinese` AI generation type
+
+For an existing database, run:
+
+```bash
+npm run db:migrate
+```
+
+New articles without a cover URL automatically receive a content-derived cover after saving. Existing articles can use the **根据文章生成封面** button in the CMS to regenerate one.

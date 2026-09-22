@@ -264,3 +264,8 @@ body.dark .audio-bar { background:rgba(29,35,34,.96); }
 .workspace.ai-closed { grid-template-columns:238px minmax(0,1fr); }
 @media (max-width:1100px) { .workspace.ai-closed { grid-template-columns:206px minmax(0,1fr); } }
 @media (max-width:760px) { .workspace.ai-closed { grid-template-columns:1fr; } }
+.language-switch { display:inline-flex; align-items:center; border:1px solid var(--line); background:var(--paper-2); border-radius:10px; padding:2px; }
+.language-choice { border:0; background:transparent; color:var(--muted); border-radius:8px; padding:6px 9px; font-size:11px; font-weight:700; }
+.language-choice.is-active { color:var(--ink); background:var(--accent-soft); }
+.audio-line { position:relative; }
+.audio-progress-thumb { position:absolute; top:50%; width:10px; height:10px; transform:translate(-50%,-50%); border-radius:50%; background:var(--accent); box-shadow:0 0 0 2px var(--paper-2); transition:left .08s linear; }

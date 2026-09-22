@@ -1,9 +1,37 @@
 const STORAGE_KEY = 'jenglish-te-saved-v2';
-const UI = {
-  articles: '文章', saved: '已保存', thisWeek: '本周', previous: '往期文章',
-  explain: '解释', translate: '中文翻译', grammar: '语法', vocabulary: '词汇', simplify: '简化英语', listen: '朗读',
-  ask: 'AI 提问', selected: '选中句子', emptyAi: '请选择一个句子，在这里向 AI 提问。',
+const I18N = {
+  zh: {
+    articles:'文章', saved:'已保存', thisWeek:'本周', previous:'往期文章', explain:'解释', chinese:'中文', translate:'翻译', grammar:'语法', vocabulary:'词汇', simplify:'简化英语', listen:'朗读', save:'保存',
+    ask:'AI 提问', selected:'选中句子', emptyAi:'请选择一个句子，在这里向 AI 提问。', assistantTitle:'从句子开始学习。', noSelection:'选中英文句子后，可以获得中文解释、翻译、语法和词汇提示。',
+    articlePrompt:'关于这篇文章提问…', contextAttached:'已附带文章上下文', send:'发送', reading:'阅读', readMin:'分钟阅读', level:'等级', savedCount:'已保存',
+    editorial:'JEnglish · Editorial English learning workspace', saveArticle:'保存文章', loadingTranslation:'正在生成中文翻译…', translationEmpty:'点击“中文”后，将把整篇文章翻译成中文。',
+    aiAssistant:'AI 助手', reopenAi:'打开 AI 助手', closeAi:'关闭 AI 助手', british:'英式英语', chooseSentence:'请选择一个句子开始朗读', retry:'重试',
+    simpleExplain:'简单解释', keyExpressions:'重点表达', grammarExplain:'语法解释', noSaved:'还没有保存内容', saveHint:'阅读时可以保存句子或文章。', delete:'删除',
+    contentApi:'内容 API', loadingContent:'正在加载阅读库…', connectApi:'正在连接文章 API。', articleUnavailable:'文章暂时无法加载', noPublished:'内容 API 没有返回已发布文章。',
+    generateTranslation:'生成中文翻译', generating:'正在生成…', minute:'分钟',
+  },
+  en: {
+    articles:'Articles', saved:'Saved', thisWeek:'This week', previous:'Previous articles', explain:'Explain', chinese:'Chinese', translate:'Translate', grammar:'Grammar', vocabulary:'Vocabulary', simplify:'Simplify English', listen:'Listen', save:'Save',
+    ask:'Ask AI', selected:'Selected sentence', emptyAi:'Select a sentence to ask the AI.', assistantTitle:'Learn from the sentence.', noSelection:'Select an English sentence to get meaning, translation, grammar, and vocabulary help.',
+    articlePrompt:'Ask about this article…', contextAttached:'Article context attached', send:'Send', reading:'Reading', readMin:'min read', level:'Level', savedCount:'Saved',
+    editorial:'JEnglish · Editorial English learning workspace', saveArticle:'Save article', loadingTranslation:'Generating Chinese translation…', translationEmpty:'Select “Chinese” to translate the full article.',
+    aiAssistant:'AI Assistant', reopenAi:'Open AI assistant', closeAi:'Close AI assistant', british:'British English', chooseSentence:'Select a sentence to start listening', retry:'Retry',
+    simpleExplain:'Simple explanation', keyExpressions:'Key expressions', grammarExplain:'Grammar explanation', noSaved:'No saved content yet', saveHint:'Save sentences or articles while reading.', delete:'Delete',
+    contentApi:'CONTENT API', loadingContent:'Loading reading library…', connectApi:'Connecting to the article API.', articleUnavailable:'Article could not be loaded', noPublished:'The content API returned no published articles.',
+    generateTranslation:'Generate Chinese translation', generating:'Generating…', minute:'min',
+  },
 };
+function t(key){ return I18N[state.uiLanguage]?.[key] ?? I18N.zh[key] ?? key; }
+function formatReadingTime(minutes){ return `${minutes} ${t('readMin')}`; }
+function formatLevel(level){
+  if (state.uiLanguage === 'en') return level;
+  return ({'Upper intermediate':'中高级','Intermediate':'中级','Advanced':'高级','Beginner':'初级'}[level] || level);
+}
+function localizeCategory(category){
+  if (state.uiLanguage === 'en') return category;
+  return ({Technology:'科技',Business:'商业',Economics:'经济',Cities:'城市',Science:'科学',Society:'社会',Other:'其他'}[category] || category);
+}
+
 
 const state = {
   articleId: new URL(location.href).pathname.match(/\/ai\/te\/([^/]+)/)?.[1] || null,
@@ -21,10 +49,13 @@ const state = {
   speed: 1,
   speechToken: 0,
   speechPlaying: false,
-  showTranslation: false,
   translationBusy: false,
   translationError: '',
   previousOpen: false,
+  uiLanguage: localStorage.getItem('jenglish-ui-language') || 'zh',
+  contentLanguage: 'en',
+  speechProgress: 0,
+  speechTimer: null,
 };
 
 function loadSaved() {
@@ -36,7 +67,7 @@ function sentenceText() { return state.selected?.text || ''; }
 function sentenceContext() { return state.selected?.paragraph?.sentences?.map(s => s.text).join(' ') || ''; }
 function formatDate(value) {
   if (!value) return '';
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(value));
+  return new Intl.DateTimeFormat(state.uiLanguage === 'en' ? 'en-GB' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(value));
 }
 function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -82,8 +113,8 @@ function render() {
   const a = article();
   if (!a) {
     document.querySelector('#app').innerHTML = state.loadError ? `
-      <div class="setup-state"><div class="eyebrow">CONTENT API</div><h1>文章暂时无法加载</h1><p>${escapeHtml(state.loadError)}</p><button class="primary-button" data-retry-content>重试</button><p class="setup-note">请确认 PostgreSQL 已启动，并已运行数据库迁移和种子脚本。</p></div>` : `
-      <div class="setup-state"><div class="eyebrow">LOADING CONTENT</div><h1>正在加载阅读库…</h1><p>正在连接文章 API。</p></div>`;
+      <div class="setup-state"><div class="eyebrow">${t('contentApi')}</div><h1>${t('articleUnavailable')}</h1><p>${escapeHtml(state.loadError)}</p><button class="primary-button" data-retry-content>${t('retry')}</button><p class="setup-note">${t('connectApi')}</p></div>` : `
+      <div class="setup-state"><div class="eyebrow">${t('contentApi')}</div><h1>${t('loadingContent')}</h1><p>${t('connectApi')}</p></div>`;
     document.querySelector('[data-retry-content]')?.addEventListener('click', initContent);
     return;
   }
@@ -101,58 +132,61 @@ function render() {
           <span class="brand-divider"></span>
           <span class="brand-product">TE AI Reader</span>
         </div>
-        <nav class="topnav" aria-label="主导航">
-          <button class="topnav-link ${state.activeNav === 'articles' ? 'is-active' : ''}" data-nav="articles">文章</button>
-          <button class="topnav-link ${state.activeNav === 'saved' ? 'is-active' : ''}" data-nav="saved">已保存 <span class="count-chip">${savedCount}</span></button>
+        <nav class="topnav" aria-label="Navigation">
+          <button class="topnav-link ${state.activeNav === 'articles' ? 'is-active' : ''}" data-nav="articles">${t('articles')}</button>
+          <button class="topnav-link ${state.activeNav === 'saved' ? 'is-active' : ''}" data-nav="saved">${t('saved')} <span class="count-chip">${savedCount}</span></button>
         </nav>
         <div class="top-actions">
-          <button class="translation-toggle ${state.showTranslation ? 'is-active' : ''}" data-translation-toggle ${state.translationBusy ? 'disabled' : ''} aria-label="切换中文翻译">中文 / EN</button>
-          <button class="icon-button" data-theme aria-label="切换主题">◐</button>
+          <div class="language-switch" aria-label="Language">
+            <button class="language-choice ${state.contentLanguage==='zh' ? 'is-active' : ''}" data-language="zh">中文</button>
+            <button class="language-choice ${state.contentLanguage==='en' ? 'is-active' : ''}" data-language="en">EN</button>
+          </div>
+          <button class="icon-button" data-theme aria-label="${state.uiLanguage==='zh'?'切换主题':'Toggle theme'}">◐</button>
         </div>
       </header>
 
       <main class="workspace ${state.drawerOpen ? '' : 'ai-closed'}">
         <aside class="sidebar">
           <div class="sidebar-section-title">TE WEEKLY</div>
-          <button class="sidebar-link is-current" data-nav="articles">${icon('spark')} ${UI.thisWeek}</button>
+          <button class="sidebar-link is-current" data-nav="articles">${icon('spark')} ${t('thisWeek')}</button>
           <button class="sidebar-link previous-trigger ${state.previousOpen ? 'is-open' : ''}" data-previous-toggle>
-            ${icon('chevronDown')} <span>${UI.previous}</span>
+            ${icon('chevronDown')} <span>${t('previous')}</span>
             <span class="previous-count">${previous.length}</span>
           </button>
           ${state.previousOpen ? `<div class="previous-cascade" aria-label="相似文章">
             ${previous.map((item, idx) => `
               <button class="cascade-card cascade-${idx + 1}" data-article="${escapeHtml(item.slug)}">
                 <img src="${escapeHtml(item.coverImageUrl || '/assets/thumb-technology.svg')}" alt="" loading="lazy">
-                <span class="cascade-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.category)} · ${item.readingTime} 分钟</small></span>
+                <span class="cascade-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(localizeCategory(item.category))} · ${formatReadingTime(item.readingTime)}</small></span>
               </button>`).join('')}
           </div>` : ''}
-          <div class="sidebar-heading">ARTICLES</div>
+          <div class="sidebar-heading">${t('articles')}</div>
           <div class="article-list">${state.articles.map(item => `
             <button class="article-item ${item.slug === a.slug ? 'is-selected' : ''}" data-article="${escapeHtml(item.slug)}">
               <span class="article-item-dot"></span>
               <span class="article-item-text">
                 <strong>${escapeHtml(item.title)}</strong>
-                <small>${escapeHtml(item.category)} · ${item.readingTime} 分钟</small>
+                <small>${escapeHtml(localizeCategory(item.category))} · ${formatReadingTime(item.readingTime)}</small>
               </span>
               ${item.slug === a.slug ? `<span class="article-item-arrow">${icon('chevron')}</span>` : ''}
             </button>`).join('')}</div>
           <div class="sidebar-footer">
-            <div class="mini-stat"><span>Level</span><strong>${escapeHtml(a.level)}</strong></div>
-            <div class="mini-stat"><span>已保存</span><strong>${savedCount}</strong></div>
+            <div class="mini-stat"><span>${t('level')}</span><strong>${escapeHtml(formatLevel(a.level))}</strong></div>
+            <div class="mini-stat"><span>${t('savedCount')}</span><strong>${savedCount}</strong></div>
           </div>
         </aside>
 
         <section class="reader-column">
           <div class="reader-switcher-mobile">
-            <button class="previous-trigger-mobile ${state.previousOpen ? 'is-open' : ''}" data-previous-toggle>${icon('chevronDown')} ${UI.previous} <span>${previous.length}</span></button>
-            ${state.previousOpen ? `<div class="previous-cascade-mobile">${previous.map(item => `<button data-article="${escapeHtml(item.slug)}"><img src="${escapeHtml(item.coverImageUrl || '/assets/thumb-technology.svg')}" alt=""><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.category)}</small></span></button>`).join('')}</div>` : ''}
+            <button class="previous-trigger-mobile ${state.previousOpen ? 'is-open' : ''}" data-previous-toggle>${icon('chevronDown')} ${t('previous')} <span>${previous.length}</span></button>
+            ${state.previousOpen ? `<div class="previous-cascade-mobile">${previous.map(item => `<button data-article="${escapeHtml(item.slug)}"><img src="${escapeHtml(item.coverImageUrl || '/assets/thumb-technology.svg')}" alt=""><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(localizeCategory(item.category))}</small></span></button>`).join('')}</div>` : ''}
           </div>
           <div class="reader-topline">
-            <span>${escapeHtml(a.category)}</span>
+            <span>${escapeHtml(localizeCategory(a.category))}</span>
             <span class="dot-sep">•</span>
             <span>${escapeHtml(formatDate(a.date))}</span>
             <span class="dot-sep">•</span>
-            <span>${a.readingTime} 分钟阅读</span>
+            <span>${formatReadingTime(a.readingTime)}</span>
           </div>
           <article class="article-reader" aria-label="文章阅读器">
             <div class="article-cover-row">
@@ -162,14 +196,14 @@ function render() {
               </div>
               <img class="article-cover" src="${escapeHtml(a.coverImageUrl || '/assets/thumb-technology.svg')}" alt="">
             </div>
-            <div class="article-meta"><span class="level-pill">${escapeHtml(a.level)}</span>${a.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
+            <div class="article-meta"><span class="level-pill">${escapeHtml(formatLevel(a.level))}</span>${a.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
             <div class="article-translation-state">
-              ${state.translationBusy ? '<span class="translation-loading"><span></span><span></span><span></span> 正在生成中文翻译…</span>' : ''}
+              ${state.translationBusy ? `<span class="translation-loading"><span></span><span></span><span></span> ${t('loadingTranslation')}</span>` : ''}
               ${state.translationError ? `<span class="translation-error">${escapeHtml(state.translationError)}</span>` : ''}
             </div>
-            ${state.showTranslation ? `
+            ${state.contentLanguage === 'zh' ? `
               <div class="translation-body" lang="zh-CN">
-                ${translationParagraphs.length ? translationParagraphs.map(text => `<p>${escapeHtml(text)}</p>`).join('') : `<div class="translation-empty">点击“中文 / EN”后，将把整篇文章翻译成中文。</div>`}
+                ${translationParagraphs.length ? translationParagraphs.map(text => `<p>${escapeHtml(text)}</p>`).join('') : `<div class="translation-empty">${t('translationEmpty')}</div>`}
               </div>` : `
               <div class="article-body" lang="en">
                 ${a.paragraphs.map((paragraph, pIdx) => `<p>${paragraph.sentences.map((sentence, sIdx) => {
@@ -179,8 +213,8 @@ function render() {
                 }).join(' ')}</p>`).join('')}
               </div>`}
             <div class="reader-endnote">
-              <span>JEnglish · Editorial English learning workspace</span>
-              <button class="save-page" data-save-article>保存文章 ${icon('bookmark')}</button>
+              <span>${t('editorial')}</span>
+              <button class="save-page" data-save-article>${t('saveArticle')} ${icon('bookmark')}</button>
             </div>
           </article>
         </section>
@@ -188,30 +222,30 @@ function render() {
         <aside class="ai-panel ${state.drawerOpen ? 'is-open' : 'is-hidden'}" aria-label="AI 助手">
           <div class="ai-panel-header">
             <div>
-              <div class="eyebrow"><span class="ai-dot"></span> AI ASSISTANT</div>
-              <h2>从句子开始学习。</h2>
+              <div class="eyebrow"><span class="ai-dot"></span> ${t('aiAssistant')}</div>
+              <h2>${t('assistantTitle')}</h2>
             </div>
-            <button class="panel-close" data-close-ai aria-label="关闭 AI 助手">${icon('x')}</button>
+            <button class="panel-close" data-close-ai aria-label="${t('closeAi')}">${icon('x')}</button>
           </div>
 
           ${state.selected ? `
           <div class="selected-card">
-            <div class="selected-label">${UI.selected}</div>
+            <div class="selected-label">${t('selected')}</div>
             <div class="selected-text">${escapeHtml(state.selected.text)}</div>
             <div class="selected-actions">
-              ${[['explain',UI.explain],['translate',UI.translate],['grammar',UI.grammar],['vocabulary',UI.vocabulary],['simplify',UI.simplify]].map(([mode,label]) => `<button class="ai-action ${cachedSentenceGeneration(mode) ? 'has-cache' : ''}" data-ai-action="${mode}" ${state.busy ? 'disabled' : ''}>${label}</button>`).join('')}
-              <button class="ai-action ai-action-listen" data-listen aria-label="朗读">${icon('headphones')} ${UI.listen}</button>
-              <button class="ai-action" data-save-sentence>${savedSentenceExists(state.selected.text) ? '已保存' : '保存'}</button>
+              ${[['explain',t('explain')],['chinese',t('chinese')],['translate',t('translate')],['grammar',t('grammar')],['vocabulary',t('vocabulary')],['simplify',t('simplify')]].map(([mode,label]) => `<button class="ai-action ${cachedSentenceGeneration(mode) ? 'has-cache' : ''}" data-ai-action="${mode}" ${state.busy ? 'disabled' : ''}>${label}</button>`).join('')}
+              <button class="ai-action ai-action-listen" data-listen aria-label="${t('listen')}">${icon('headphones')} ${t('listen')}</button>
+              <button class="ai-action" data-save-sentence>${savedSentenceExists(state.selected.text) ? '已保存' : t('save')}</button>
             </div>
           </div>` : `
             <div class="ai-empty">
               <div class="ai-empty-icon">${icon('spark')}</div>
-              <h3>${UI.emptyAi}</h3>
-              <p>选中英文句子后，可以获得中文解释、翻译、语法和词汇提示。</p>
+              <h3>${t('emptyAi')}</h3>
+              <p>${t('noSelection')}</p>
               <div class="prompt-chips">
-                <button data-demo-prompt="请用中文简单解释这句话">简单解释</button>
-                <button data-demo-prompt="请告诉我重要的英文表达">重点表达</button>
-                <button data-demo-prompt="请用中文解释这句话的语法">语法解释</button>
+                <button data-demo-prompt="${t('simpleExplain')}">${t('simpleExplain')}</button>
+                <button data-demo-prompt="${t('keyExpressions')}">${t('keyExpressions')}</button>
+                <button data-demo-prompt="${t('grammarExplain')}">${t('grammarExplain')}</button>
               </div>
             </div>
           `}
@@ -221,24 +255,24 @@ function render() {
             ${state.busy ? `<div class="message assistant"><div class="message-label">JEnglish AI</div><div class="thinking"><span></span><span></span><span></span></div></div>` : ''}
           </div>
 
-          ${state.aiError ? `<div class="ai-error" role="alert">${escapeHtml(state.aiError)} <button data-retry>重试</button></div>` : ''}
+          ${state.aiError ? `<div class="ai-error" role="alert">${escapeHtml(state.aiError)} <button data-retry>${t('retry')}</button></div>` : ''}
 
           <form class="ask-form" data-ask-form>
             <div class="ask-input-wrap">
-              <textarea name="question" rows="2" placeholder="关于这篇文章提问…" aria-label="向 AI 提问"></textarea>
-              <button class="send-button" type="submit" ${state.busy ? 'disabled' : ''} aria-label="发送">${icon('send')}</button>
+              <textarea name="question" rows="2" placeholder="${t('articlePrompt')}" aria-label="${t('ask')}"></textarea>
+              <button class="send-button" type="submit" ${state.busy ? 'disabled' : ''} aria-label="${t('send')}">${icon('send')}</button>
             </div>
-            <div class="ask-hint"><span>已附带文章上下文</span><kbd>Enter</kbd><span>发送</span></div>
+            <div class="ask-hint"><span>${t('contextAttached')}</span><kbd>Enter</kbd><span>${t('send')}</span></div>
           </form>
         </aside>
 
-        ${!state.drawerOpen ? `<button class="ai-reopen" data-open-ai aria-label="打开 AI 助手">${icon('spark')} AI</button>` : ''}
+        ${!state.drawerOpen ? `<button class="ai-reopen" data-open-ai aria-label="${t('reopenAi')}">${icon('spark')} AI</button>` : ''}
       </main>
 
       <div class="audio-bar">
         <div class="audio-main">
           <button class="audio-play" data-play aria-label="朗读句子">${state.speechPlaying ? icon('pause') : icon('play')}</button>
-          <div class="audio-track"><div class="audio-line"><span class="audio-progress" style="width:${state.speechPlaying ? '38%' : '0%'}"></span></div><div class="audio-caption"><span>${state.selected ? escapeHtml(state.selected.text) : '请选择一个句子开始朗读'}</span><span>${state.selected ? 'British English' : '—'}</span></div></div>
+          <div class="audio-track"><div class="audio-line"><span class="audio-progress" style="width:${state.speechProgress * 100}%"></span><span class="audio-progress-thumb" style="left:${state.speechProgress * 100}%"></span></div><div class="audio-caption"><span>${state.selected ? escapeHtml(state.selected.text) : t('chooseSentence')}</span><span>${state.selected ? t('british') : '—'}</span></div></div>
         </div>
         <div class="audio-controls">
           <select data-speed aria-label="播放速度">${[0.75,1,1.25,1.5].map(v => `<option value="${v}" ${state.speed === v ? 'selected' : ''}>${v}×</option>`).join('')}</select>
@@ -268,7 +302,7 @@ function bindEvents() {
     const first = state.articles[0];
     if (!first) return;
     history.pushState({}, '', '/ai/te');
-    state.showTranslation = false;
+    state.contentLanguage = 'en';
     await loadArticle(first.slug, false);
   });
 
@@ -285,6 +319,9 @@ function bindEvents() {
     const pIdx = Number(btn.dataset.pidx), sIdx = Number(btn.dataset.sidx);
     const sentence = a.paragraphs[pIdx]?.sentences?.[sIdx];
     if (!sentence) return;
+    if (speechSynthesis?.speaking) speechSynthesis.cancel();
+    state.speechPlaying = false;
+    resetSpeechProgress();
     state.selected = { id: String(sentence.id), text: sentence.text, paragraph: a.paragraphs[pIdx], pIdx, sIdx };
     state.aiError = '';
     state.drawerOpen = true;
@@ -309,7 +346,7 @@ function bindEvents() {
   document.querySelector('[data-retry]')?.addEventListener('click', () => state.selected ? runAi('explain') : null);
   document.querySelector('[data-save-article]')?.addEventListener('click', saveArticle);
   document.querySelectorAll('[data-previous-toggle]').forEach(btn => btn.addEventListener('click', () => { state.previousOpen = !state.previousOpen; render(); }));
-  document.querySelector('[data-translation-toggle]')?.addEventListener('click', toggleArticleTranslation);
+  document.querySelectorAll('[data-language]').forEach(btn => btn.addEventListener('click', () => selectContentLanguage(btn.dataset.language)));
 }
 
 async function apiJson(url, options = {}) {
@@ -348,7 +385,7 @@ async function loadArticle(slug, push = true) {
   state.selected = null;
   state.aiMessages = [];
   state.aiError = '';
-  state.showTranslation = false;
+  state.contentLanguage = 'en';
   state.translationError = '';
   state.translationBusy = false;
   state.articleId = slug;
@@ -379,13 +416,13 @@ function openDrawer() {
   render();
 }
 
-async function toggleArticleTranslation() {
-  if (state.translationBusy) return;
-  state.showTranslation = !state.showTranslation;
-  if (!state.showTranslation) return render();
-  const existing = article()?.ai?.articleTranslationZh;
-  if (existing) return render();
-
+async function selectContentLanguage(language) {
+  const target = language === 'zh' ? 'zh' : 'en';
+  state.contentLanguage = target;
+  state.uiLanguage = target;
+  localStorage.setItem('jenglish-ui-language', target);
+  if (target === 'en') return render();
+  if (article()?.ai?.articleTranslationZh) return render();
   state.translationBusy = true;
   state.translationError = '';
   render();
@@ -403,7 +440,7 @@ async function toggleArticleTranslation() {
     state.currentArticle.ai ||= { articleTranslationZh: null, sentences: {} };
     state.currentArticle.ai.articleTranslationZh = data.answer;
   } catch (error) {
-    state.showTranslation = false;
+    state.contentLanguage = 'en';
     state.translationError = error instanceof Error ? error.message : '中文翻译生成失败。';
   } finally {
     state.translationBusy = false;
@@ -411,12 +448,13 @@ async function toggleArticleTranslation() {
   }
 }
 
+
 async function runAi(mode, question = '') {
   if (state.busy) return;
   if (mode !== 'chat' && !state.selected) return;
   state.busy = true;
   state.aiError = '';
-  const userText = mode === 'chat' ? question : ({explain:UI.explain,translate:UI.translate,grammar:UI.grammar,vocabulary:UI.vocabulary,simplify:UI.simplify}[mode] || mode);
+  const userText = mode === 'chat' ? question : ({explain:t('explain'),chinese:t('chinese'),translate:t('translate'),grammar:t('grammar'),vocabulary:t('vocabulary'),simplify:t('simplify')}[mode] || mode);
   state.aiMessages.push({ role:'user', content:userText });
   render();
 
@@ -444,11 +482,21 @@ async function runAi(mode, question = '') {
     }
     state.aiMessages.push({ role:'assistant', content:data.answer });
   } catch (error) {
-    state.aiError = error instanceof Error ? error.message : 'AI 回答获取失败，请重试。';
+    state.aiError = error instanceof Error ? error.message : `${t('aiAssistant')} ${t('retry')}。`;
   } finally {
     state.busy = false;
     render();
   }
+}
+
+function stopSpeechTimer() {
+  if (state.speechTimer) clearInterval(state.speechTimer);
+  state.speechTimer = null;
+}
+
+function resetSpeechProgress() {
+  stopSpeechTimer();
+  state.speechProgress = 0;
 }
 
 function toggleSpeech() {
@@ -459,6 +507,7 @@ function toggleSpeech() {
   if (speechSynthesis.speaking) {
     speechSynthesis.cancel();
     state.speechPlaying = false;
+    resetSpeechProgress();
     render();
     return;
   }
@@ -466,12 +515,38 @@ function toggleSpeech() {
   utterance.lang = 'en-GB';
   utterance.rate = state.speed;
   state.speechPlaying = true;
+  state.speechProgress = 0;
   const token = ++state.speechToken;
-  utterance.onend = () => { if (token === state.speechToken) { state.speechPlaying = false; render(); } };
+  const estimatedDuration = Math.max(1800, Math.min(18_000, (state.selected.text.length * 62) / state.speed));
+  const startedAt = performance.now();
+  stopSpeechTimer();
+  state.speechTimer = setInterval(() => {
+    const elapsed = performance.now() - startedAt;
+    state.speechProgress = Math.min(0.99, elapsed / estimatedDuration);
+    const progress = document.querySelector('.audio-progress');
+    const thumb = document.querySelector('.audio-progress-thumb');
+    if (progress) progress.style.width = `${state.speechProgress * 100}%`;
+    if (thumb) thumb.style.left = `${state.speechProgress * 100}%`;
+  }, 70);
+  utterance.onend = () => {
+    if (token !== state.speechToken) return;
+    state.speechPlaying = false;
+    state.speechProgress = 1;
+    stopSpeechTimer();
+    render();
+    setTimeout(() => { if (token === state.speechToken) { state.speechProgress = 0; render(); } }, 350);
+  };
+  utterance.onerror = () => {
+    if (token !== state.speechToken) return;
+    state.speechPlaying = false;
+    resetSpeechProgress();
+    render();
+  };
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
   render();
 }
+
 
 function nextSentence() {
   if (!state.selected) return showToast('请先选择文章中的句子。');
@@ -480,6 +555,9 @@ function nextSentence() {
   if (s >= a.paragraphs[p].sentences.length) { p++; s = 0; }
   if (p >= a.paragraphs.length) { p = 0; s = 0; }
   const sentence = a.paragraphs[p].sentences[s];
+  if (speechSynthesis?.speaking) speechSynthesis.cancel();
+  state.speechPlaying = false;
+  resetSpeechProgress();
   state.selected = { id:String(sentence.id), text:sentence.text, paragraph:a.paragraphs[p], pIdx:p, sIdx:s };
   state.drawerOpen = true;
   render();
@@ -504,7 +582,7 @@ function saveArticle() {
 function renderSavedOverlay() {
   const overlay = document.createElement('div'); overlay.className = 'overlay';
   overlay.innerHTML = `<div class="saved-modal"><div class="saved-modal-head"><div><div class="eyebrow">SAVED</div><h2>已保存的学习内容</h2></div><button class="panel-close" data-close>${icon('x')}</button></div>
-  <div class="saved-list">${state.saved.length ? state.saved.map((x,i)=>`<div class="saved-row"><div><small>${x.kind === 'sentence' ? '句子' : '文章'}</small><strong>${escapeHtml(x.text || x.title)}</strong>${x.articleId ? `<span>${escapeHtml(state.articles.find(a=>String(a.id)===String(x.articleId))?.title || '')}</span>`:''}</div><button data-remove="${i}">删除</button></div>`).join('') : `<div class="saved-empty"><div class="ai-empty-icon">${icon('bookmark')}</div><h3>还没有保存内容</h3><p>阅读时可以保存句子或文章。</p></div>`}</div></div>`;
+  <div class="saved-list">${state.saved.length ? state.saved.map((x,i)=>`<div class="saved-row"><div><small>${x.kind === 'sentence' ? '句子' : '文章'}</small><strong>${escapeHtml(x.text || x.title)}</strong>${x.articleId ? `<span>${escapeHtml(state.articles.find(a=>String(a.id)===String(x.articleId))?.title || '')}</span>`:''}</div><button data-remove="${i}">${t('delete')}</button></div>`).join('') : `<div class="saved-empty"><div class="ai-empty-icon">${icon('bookmark')}</div><h3>${t('noSaved')}</h3><p>${t('saveHint')}</p></div>`}</div></div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.closest('[data-close]')) overlay.remove(); });
   overlay.querySelectorAll('[data-remove]').forEach(btn => btn.addEventListener('click', () => { state.saved.splice(Number(btn.dataset.remove),1); persistSaved(); overlay.remove(); renderSavedOverlay(); render(); }));
