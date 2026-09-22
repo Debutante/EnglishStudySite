@@ -2,19 +2,28 @@
 
 A context-aware English reading workspace inspired by the JEnglish `/ai/te` experience.
 
-This repository now includes **Phase 1 + Phase 2 of the article backend**:
+This repository now includes the article backend plus the first AI/content-management layer.
+
+## What is implemented
 
 - PostgreSQL content database
 - Versioned articles
 - Paragraph and sentence normalization
 - Categories and tags
-- Published/draft/review/archived article states
+- Published/draft/review/archived workflow
 - Public article list/detail APIs
 - Public category API
-- The frontend now loads article content from the API instead of a hard-coded article array
-- The three original demo articles are available through the database seed script
+- Chinese UI for the learner-facing reader
+- `中文 / EN` article translation toggle
+- Cached full-article Chinese translations
+- Cached sentence-level AI explanations, translations, grammar, vocabulary and simplified English
+- AI provider abstraction with mock mode and OpenAI mode
+- Admin CMS at `/admin`
+- Admin article create/edit/publish workflow
+- Admin AI generation actions
+- Editorial thumbnail assets for the demo articles
 
-AI generation, authentication, user bookmarks in PostgreSQL, and the admin CMS are intentionally deferred to the next phase.
+The three seeded articles are original demo content created for development and testing.
 
 ## Stack
 
@@ -23,48 +32,41 @@ AI generation, authentication, user bookmarks in PostgreSQL, and the admin CMS a
 - `pg`
 - Static HTML/CSS/JavaScript frontend
 - Browser speech synthesis for the current audio MVP
-
-## Database model
-
-```text
-Category
-  └── Article
-       ├── Article Version
-       │    └── Paragraph
-       │         └── Sentence
-       └── Article Tags ── Tag
-```
-
-Each article is stored as a versioned hierarchy so the sentence becomes the reusable unit for later AI explanations, vocabulary and audio.
+- OpenAI Responses API for optional real AI generation
 
 ## Setup
 
-Copy `.env.example` to `.env` and make sure PostgreSQL is running.
-
-The included Docker Compose file provides a local PostgreSQL instance:
+Create `.env` from `.env.example` and make sure PostgreSQL is running.
 
 ```bash
-docker compose up -d postgres
+cp .env.example .env
 npm install
 npm run db:setup
 npm start
 ```
 
-Then open:
+Open:
 
 ```text
-http://localhost:4173/ai/te
+Reader: http://localhost:4173/ai/te
+Admin:  http://localhost:4173/admin
 ```
 
-Default local database values:
+### Environment variables
 
 ```text
 DATABASE_URL=postgres://jenglish:jenglish@localhost:5432/jenglish
+AI_PROVIDER=mock
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5-mini
+ADMIN_KEY=change-me-in-development
 ```
 
-If Docker is not available, use any PostgreSQL 14+ instance and point `DATABASE_URL` at it.
+`AI_PROVIDER=mock` is enough to test the full UI and database workflow without an OpenAI key. Switch to `AI_PROVIDER=openai` and set `OPENAI_API_KEY` when you want real model generation.
 
-## Database commands
+`ADMIN_KEY` protects the CMS API. For production, use a strong secret and place it only in the server environment.
+
+## Database
 
 Run all pending migrations:
 
@@ -84,7 +86,7 @@ Run both:
 npm run db:setup
 ```
 
-The seed is idempotent for the three demo article slugs: it updates their metadata and rebuilds their version-1 paragraphs/sentences.
+The new `002_ai_admin.sql` migration adds the persistent AI generation cache. AI results are tied to an article version so changing an article creates a clean generation namespace.
 
 ## Public API
 
@@ -94,15 +96,13 @@ The seed is idempotent for the three demo article slugs: it updates their metada
 GET /api/articles
 ```
 
-Returns lightweight article cards for navigation and discovery.
-
 ### Get one published article
 
 ```http
 GET /api/articles/:slug
 ```
 
-Returns the full normalized article including paragraphs and sentences.
+The detail response includes paragraph/sentence content plus cached AI generation data when available.
 
 ### Get published categories
 
@@ -110,19 +110,58 @@ Returns the full normalized article including paragraphs and sentences.
 GET /api/categories
 ```
 
-Returns categories with published article counts.
+### AI actions
 
-The APIs intentionally expose only `status = 'published'` content.
-
-## Test and syntax checks
-
-```bash
-npm test
-npm run check
+```http
+POST /api/ai
 ```
 
-`npm test` does not require a live PostgreSQL database; database connection is only opened when the database scripts or article endpoints are used.
+Supported modes:
 
-## Important content note
+- `article_translate`
+- `explain`
+- `translate`
+- `grammar`
+- `vocabulary`
+- `simplify`
+- `chat`
 
-The three seeded articles are original demo content created for this project. The schema includes `source_name`, `source_url`, and `copyright_note` so authorized production content can later be represented explicitly.
+Non-chat results are cached by article version, sentence and generation type.
+
+## Admin CMS
+
+The CMS is intentionally small and focused on content workflow.
+
+```text
+/admin
+```
+
+Features:
+
+- list articles by status
+- create a new article
+- edit metadata and content
+- create a new article version
+- change status
+- publish an article
+- generate a full Chinese translation
+- generate sentence learning content for the whole article
+- open the learner reader for the current article
+
+The current CMS uses an environment-level `ADMIN_KEY`. It is suitable for an internal MVP; a full user/account system can replace it later.
+
+## Reader behavior
+
+The learner-facing reader now:
+
+- uses Simplified Chinese for Japanese-language UI copy
+- keeps the article itself in English by default
+- toggles the full passage to cached/generated Chinese with `中文 / EN`
+- supports sentence-level AI actions
+- persists article/sentence saves locally for the MVP
+- shows a collapsible previous/similar article thumbnail cascade
+- hides the AI panel completely when its close button is pressed and shows a reopen button
+
+## Content note
+
+The seeded articles and thumbnails are original demo content/assets. The schema includes source/copyright fields so authorized production content can be represented explicitly.

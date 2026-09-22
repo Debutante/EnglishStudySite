@@ -22,8 +22,8 @@ async function main() {
       const articleResult = await client.query(`
         INSERT INTO articles(
           slug, title, subtitle, excerpt, category_id, level, status,
-          published_at, reading_time_minutes, language, source_name, copyright_note, updated_at
-        ) VALUES ($1, $2, $3, $3, $4, $5, 'published', $6, $7, 'en', 'JEnglish Demo', 'Original demo content for development and testing.', NOW())
+          published_at, reading_time_minutes, language, source_name, copyright_note, cover_image_url, updated_at
+        ) VALUES ($1, $2, $3, $3, $4, $5, 'published', $6, $7, 'en', 'JEnglish Demo', 'Original demo content for development and testing.', $8, NOW())
         ON CONFLICT(slug) DO UPDATE SET
           title = EXCLUDED.title,
           subtitle = EXCLUDED.subtitle,
@@ -36,6 +36,7 @@ async function main() {
           language = EXCLUDED.language,
           source_name = EXCLUDED.source_name,
           copyright_note = EXCLUDED.copyright_note,
+          cover_image_url = EXCLUDED.cover_image_url,
           updated_at = NOW()
         RETURNING id
       `, [
@@ -46,6 +47,7 @@ async function main() {
         article.level,
         publishedAt(article.date),
         article.readingTime,
+        article.coverImageUrl || null,
       ]);
 
       const articleId = articleResult.rows[0].id;

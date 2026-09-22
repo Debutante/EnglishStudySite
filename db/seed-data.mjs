@@ -14,6 +14,7 @@ export const DEMO_ARTICLES = [
     title: 'AI is changing where productivity comes from',
     dek: 'The next gains may come less from faster software and more from better decisions about how work is organised.',
     tags: ['AI', 'work', 'productivity'],
+    coverImageUrl: '/assets/thumb-technology.svg',
     paragraphs: [
       [
         'Companies once looked to new software mainly for faster execution.',
@@ -38,6 +39,7 @@ export const DEMO_ARTICLES = [
     title: 'Cities are learning to price scarce energy',
     dek: 'As electricity demand grows, local systems are experimenting with signals that encourage consumers to move usage away from crowded periods.',
     tags: ['energy', 'cities', 'economics'],
+    coverImageUrl: '/assets/thumb-economics.svg',
     paragraphs: [
       [
         'Electricity networks are built to meet demand at the busiest moments, even though those moments may occur for only a few hours each year.',
@@ -62,6 +64,7 @@ export const DEMO_ARTICLES = [
     title: 'Better mobility data can change the shape of a city',
     dek: 'Transport planning is moving from counting vehicles towards understanding how people actually move between places.',
     tags: ['mobility', 'data', 'urban planning'],
+    coverImageUrl: '/assets/thumb-cities.svg',
     paragraphs: [
       [
         'For decades, transport agencies often measured success by counting vehicles, estimating travel times and expanding roads where congestion appeared.',
