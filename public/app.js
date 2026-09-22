@@ -69,6 +69,8 @@ const state = {
   contentLanguage: 'en',
   speechProgress: 0,
   speechTimer: null,
+  speechSeeking: false,
+  speechWasPlayingBeforeSeek: false,
 };
 
 function loadSaved() {
@@ -303,7 +305,7 @@ function renderSpeechControl() {
         <div class="audio-main">
           <button class="audio-play" data-play aria-label="${t('listen')}" aria-pressed="false">${icon('play')}</button>
           <div class="audio-track">
-            <div class="audio-line">
+            <div class="audio-line" role="slider" tabindex="0" aria-label="${t('listen')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
               <span class="audio-progress"></span>
               <span class="audio-progress-thumb"></span>
             </div>
@@ -318,6 +320,8 @@ function renderSpeechControl() {
     host.querySelector('[data-play]')?.addEventListener('click', toggleSpeech);
     host.querySelector('[data-next]')?.addEventListener('click', nextSentence);
     host.querySelector('[data-speed]')?.addEventListener('change', (e) => { state.speed = Number(e.target.value); });
+    host.querySelector('.audio-line')?.addEventListener('pointerdown', beginSpeechSeek);
+    host.querySelector('.audio-line')?.addEventListener('keydown', handleSpeechSeekKeydown);
   }
 
   const caption = host.querySelector('[data-speech-caption]');
@@ -543,6 +547,8 @@ function syncSpeechProgressVisuals() {
   const thumb = document.querySelector('.audio-progress-thumb');
   if (progress) progress.style.width = percent;
   if (thumb) thumb.style.left = percent;
+  const line = document.querySelector('.audio-line');
+  if (line) line.setAttribute('aria-valuenow', String(Math.round(progressValue * 100)));
 }
 
 function syncSpeechControlVisual() {
@@ -565,6 +571,8 @@ function resetSpeechProgress() {
   state.speechEstimatedDuration = 0;
   state.speechResumeChar = 0;
   state.speechBoundaryChar = 0;
+  state.speechSeeking = false;
+  state.speechWasPlayingBeforeSeek = false;
   state.speechToken += 1;
   syncSpeechProgressVisuals();
   syncSpeechControlVisual();
@@ -595,6 +603,114 @@ function startSpeechProgressLoop() {
     state.speechTimer = requestAnimationFrame(updateSpeechProgress);
   };
   state.speechTimer = requestAnimationFrame(updateSpeechProgress);
+}
+
+function estimateSpeechDuration(textLength) {
+  return Math.max(1800, Math.min(18_000, (textLength * 62) / state.speed));
+}
+
+function clampSpeechProgress(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function applySpeechSeekProgress(progressValue) {
+  const progress = clampSpeechProgress(progressValue);
+  const textLength = state.selected?.text?.length || 0;
+  if (!textLength) return;
+  if (!state.speechEstimatedDuration) state.speechEstimatedDuration = estimateSpeechDuration(textLength);
+  state.speechProgress = progress;
+  state.speechElapsedMs = progress * state.speechEstimatedDuration;
+  state.speechStartedAt = null;
+  state.speechResumeChar = Math.max(0, Math.min(textLength, Math.floor(progress * textLength)));
+  state.speechBoundaryChar = state.speechResumeChar;
+  syncSpeechProgressVisuals();
+}
+
+function speechProgressFromPointer(event, line) {
+  const rect = line.getBoundingClientRect();
+  if (!rect || rect.width <= 0) return 0;
+  return clampSpeechProgress((event.clientX - rect.left) / rect.width);
+}
+
+function beginSpeechSeek(event) {
+  const line = event.currentTarget;
+  if (!line || !state.selected) return;
+  state.speechSeeking = true;
+  state.speechWasPlayingBeforeSeek = state.speechPlaying;
+  if (state.speechPlaying) updateSpeechProgressNow();
+  stopSpeechTimer();
+
+  // Own the position ourselves before canceling the browser utterance.
+  state.speechToken += 1;
+  try { speechSynthesis.cancel(); } catch {}
+  state.speechPlaying = false;
+  state.speechPaused = true;
+  state.speechPhase = 'paused';
+
+  applySpeechSeekProgress(speechProgressFromPointer(event, line));
+  try { line.setPointerCapture(event.pointerId); } catch {}
+  event.preventDefault();
+  line.addEventListener('pointermove', continueSpeechSeek);
+  line.addEventListener('pointerup', endSpeechSeek, { once: true });
+  line.addEventListener('pointercancel', cancelSpeechSeek, { once: true });
+}
+
+function continueSpeechSeek(event) {
+  if (!state.speechSeeking) return;
+  applySpeechSeekProgress(speechProgressFromPointer(event, event.currentTarget));
+}
+
+function endSpeechSeek(event) {
+  if (!state.speechSeeking) return;
+  const line = event.currentTarget;
+  applySpeechSeekProgress(speechProgressFromPointer(event, line));
+  state.speechSeeking = false;
+  line.removeEventListener('pointermove', continueSpeechSeek);
+  try { line.releasePointerCapture(event.pointerId); } catch {}
+  const shouldResume = state.speechWasPlayingBeforeSeek;
+  state.speechWasPlayingBeforeSeek = false;
+  syncSpeechProgressVisuals();
+  if (shouldResume) {
+    // Resume immediately from the newly dragged position.
+    speakSelectedFromOffset();
+  } else {
+    // Stay paused. A later Play/Resume uses the newly calculated character offset.
+    syncSpeechControlVisual();
+  }
+}
+
+function cancelSpeechSeek(event) {
+  if (!state.speechSeeking) return;
+  state.speechSeeking = false;
+  const line = event.currentTarget;
+  line.removeEventListener('pointermove', continueSpeechSeek);
+  try { line.releasePointerCapture(event.pointerId); } catch {}
+  state.speechWasPlayingBeforeSeek = false;
+  syncSpeechProgressVisuals();
+  syncSpeechControlVisual();
+}
+
+function handleSpeechSeekKeydown(event) {
+  if (!state.selected) return;
+  const step = event.shiftKey ? 0.1 : 0.05;
+  let next = state.speechProgress;
+  if (event.key === 'ArrowRight') next += step;
+  else if (event.key === 'ArrowLeft') next -= step;
+  else if (event.key === 'Home') next = 0;
+  else if (event.key === 'End') next = 1;
+  else return;
+  event.preventDefault();
+  const wasPlaying = state.speechPlaying;
+  if (wasPlaying) updateSpeechProgressNow();
+  stopSpeechTimer();
+  state.speechToken += 1;
+  try { speechSynthesis.cancel(); } catch {}
+  state.speechPlaying = false;
+  state.speechPaused = true;
+  state.speechPhase = 'paused';
+  applySpeechSeekProgress(next);
+  if (wasPlaying) speakSelectedFromOffset();
+  else syncSpeechControlVisual();
 }
 
 function pauseSpeech() {
@@ -654,7 +770,7 @@ function speakSelectedFromOffset() {
   utterance.rate = state.speed;
 
   const token = ++state.speechToken;
-  const fullDuration = Math.max(1800, Math.min(18_000, (textLength * 62) / state.speed));
+  const fullDuration = estimateSpeechDuration(textLength);
   state.speechEstimatedDuration = fullDuration;
   state.speechElapsedMs = Math.max(0, state.speechProgress * fullDuration);
   state.speechStartedAt = performance.now();

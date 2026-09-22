@@ -73,6 +73,9 @@ test('speech UI contains a moving thumb tied to speech progress', async () => {
   assert.match(source, /thumb\.style\.left/);
   assert.match(source, /speechResumeChar/);
   assert.match(source, /speakSelectedFromOffset/);
+  assert.match(source, /pointerdown.*beginSpeechSeek/s);
+  assert.match(source, /speechProgressFromPointer/);
+  assert.match(source, /applySpeechSeekProgress/);
   assert.doesNotMatch(source, /speechSynthesis\.pause\(\)/);
 });
 
@@ -118,8 +121,8 @@ test('speech progress uses a white circular dot and visible filled track', async
   const css = await fs.readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   assert.match(css, /background:#fff/);
   assert.match(css, /border-radius:50%/);
-  assert.match(css, /width:30px/);
-  assert.match(css, /height:30px/);
+  assert.match(css, /width:15px/);
+  assert.match(css, /height:15px/);
   assert.match(css, /background:#fff/);
   assert.match(css, /border:0/);
   assert.match(css, /\.audio-progress-thumb/);

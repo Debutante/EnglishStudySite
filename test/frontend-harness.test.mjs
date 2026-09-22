@@ -16,10 +16,35 @@ function storage(seed = {}) {
 async function boot() {
   const source = await fs.readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const root = { innerHTML: '' };
-  const speechRoot = { innerHTML: '', querySelector(selector) { return special.get(selector) || null; } };
+  const lineListeners = new Map();
+  const speechLine = {
+    style: {}, attributes: {},
+    addEventListener(type, fn) { const list = lineListeners.get(type) || []; list.push(fn); lineListeners.set(type, list); },
+    removeEventListener(type, fn) { const list = lineListeners.get(type) || []; lineListeners.set(type, list.filter(item => item !== fn)); },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    getAttribute(name) { return this.attributes[name]; },
+    getBoundingClientRect() { return { left: 100, width: 200, top: 0, height: 6 }; },
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    dispatch(type, extra = {}) {
+      const event = { currentTarget: this, preventDefault(){}, pointerId:1, ...extra };
+      for (const fn of [...(lineListeners.get(type) || [])]) fn(event);
+    },
+  };
+  let speechMounted = false;
+  const speechRoot = {
+    _html: '',
+    get innerHTML() { return this._html; },
+    set innerHTML(value) { this._html = value; speechMounted = true; },
+    querySelector(selector) {
+      if (selector === '.audio-bar') return speechMounted ? {} : null;
+      return special.get(selector) || null;
+    },
+  };
   const special = new Map([
     ['.audio-progress', { style: {} }],
     ['.audio-progress-thumb', { style: {} }],
+    ['.audio-line', speechLine],
     ['#app', root],
     ['#speech-control', speechRoot],
   ]);
@@ -76,6 +101,7 @@ async function boot() {
     globalThis.__toggleSpeech = () => toggleSpeech();
     globalThis.__setNow = (n) => { globalThis.__testNow = n; };
     globalThis.__renderNow = () => render();
+    globalThis.__dragProgress = (clientX) => { const line = document.querySelector('.audio-line'); line.dispatch('pointerdown', {clientX}); line.dispatch('pointermove', {clientX}); line.dispatch('pointerup', {clientX}); return { progress: state.speechProgress, resumeChar: state.speechResumeChar, paused: state.speechPaused, playing: state.speechPlaying, phase: state.speechPhase, seeking: state.speechSeeking, wasPlaying: state.speechWasPlayingBeforeSeek, utterance: speechSynthesis.lastUtterance?.text }; };
     globalThis.__bootPromise = (async () => { await new Promise(r => setTimeout(r, 10)); return __stateSnapshot(); })();
   `;
   vm.runInContext(source + harness, context, {filename:'app.js'});
@@ -185,3 +211,48 @@ test('sentence playback pauses without resetting the dot/filled track and resume
   assert.ok(resumedLeft > pausedLeft);
   assert.equal(resumedLeft, resumedWidth);
 });;
+
+
+test('speech progress bar is draggable, uses a smaller solid white dot, and recalculates resume position from the dragged stop', async () => {
+  const {context, rafCallbacks, speechRoot} = await boot();
+  await context.__setSelected();
+  context.__setNow(0);
+  context.__startSpeech();
+
+  context.__setNow(500);
+  const cb = [...rafCallbacks.values()][0];
+  cb();
+
+  // Drag to 70% of the bar. The bar spans x=100..300 in the harness.
+  const result = await context.__dragProgress(240);
+  assert.equal(result.paused, false, 'dragging a playing sentence should resume from the new position');
+  assert.equal(result.playing, true);
+  assert.ok(result.progress > 0.69 && result.progress < 0.71);
+  assert.ok(result.resumeChar > 0);
+  assert.equal(Number.parseFloat(context.document.querySelector('.audio-progress').style.width), Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left));
+  assert.equal(context.document.querySelector('.audio-progress-thumb').style.left, '70%');
+
+  // Pause immediately after the drag: pause position must be the new dragged position,
+  // not the pre-drag position or zero.
+  context.__toggleSpeech();
+  const paused = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left);
+  assert.ok(paused >= 69 && paused <= 71);
+  assert.equal(context.document.querySelector('.audio-progress-thumb').style.left, context.document.querySelector('.audio-progress').style.width);
+
+  // The seek bar is keyboard accessible too.
+  speechRoot.querySelector('.audio-line').dispatch('keydown', { key:'ArrowLeft', shiftKey:false });
+  const keyboardMoved = Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left);
+  assert.ok(keyboardMoved < paused);
+
+  // When already paused, dragging changes the stored pause/resume position but does not restart speech.
+  const pausedDrag = await context.__dragProgress(280);
+  assert.equal(pausedDrag.paused, true);
+  assert.equal(pausedDrag.playing, false);
+  assert.ok(pausedDrag.progress > 0.89 && pausedDrag.progress < 0.91);
+  const pausedOffsetText = context.speechSynthesis.lastUtterance?.text;
+  context.__toggleSpeech();
+  assert.equal((await context.__setNow(6000)), undefined);
+  assert.equal(context.speechSynthesis.speaking, true);
+  assert.equal(context.document.querySelector('.audio-progress-thumb').style.left, '90%');
+  assert.notEqual(context.speechSynthesis.lastUtterance?.text, pausedOffsetText);
+});
