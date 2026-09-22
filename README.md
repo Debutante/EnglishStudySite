@@ -207,3 +207,19 @@ npm run check
 The learner UI uses Simplified Chinese as the default UI language. Switching to `EN` changes the UI labels and article chrome to English; switching to `中文` changes the UI labels back to Simplified Chinese and loads the cached/generated Chinese article passage.
 
 For real translations and sentence generation, set `AI_PROVIDER=openai` and provide `OPENAI_API_KEY`. Mock mode is intended to verify the UI flow without an API key; seeded demo sentences have deterministic mock learning results.
+
+## Initial Prompt
+
+regarding the website, analyze
+- What the website does
+- Who the website is for
+- The main user flow
+- The core feature
+- A simple page structure- tech stack
+- Design direction
+- Key edge cases- Step-by-step implementation plan
+- Launch checklist
+
+turn it into a clear, copy-paste-ready Codex prompt 
+
+Make the prompt specific enough that you can build the site inside a repo with minimal follow-up questions.
