@@ -165,3 +165,7 @@ The learner-facing reader now:
 ## Content note
 
 The seeded articles and thumbnails are original demo content/assets. The schema includes source/copyright fields so authorized production content can be represented explicitly.
+
+
+### Article slugs
+Article slugs are generated automatically from the article title when an article is saved. Duplicate titles receive a numeric suffix, and Unicode titles are supported.

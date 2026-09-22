@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatArticleSummary, formatSentence } from '../db/postgres.mjs';
+import { formatArticleSummary, formatSentence, normalizeSlug } from '../db/postgres.mjs';
 import { parseApiPath } from '../server.mjs';
 import { normalizeAiRequest, mockAnswer } from '../server-core.mjs';
 
@@ -85,4 +85,10 @@ test('admin page is directly servable', async () => {
   const { serveStatic } = await import('../server-core.mjs');
   const file = await serveStatic('/admin.html');
   assert.match(file, /admin\.html$/);
+});
+
+
+test('auto-generates URL-safe slugs from titles, including Unicode', () => {
+  assert.equal(normalizeSlug('The New Geography of Remote Work'), 'the-new-geography-of-remote-work');
+  assert.equal(normalizeSlug('人工智能改变城市'), '人工智能改变城市');
 });

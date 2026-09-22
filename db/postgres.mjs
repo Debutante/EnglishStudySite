@@ -292,7 +292,7 @@ export async function getCachedAiGeneration({ articleVersionId, sentenceId = nul
     SELECT content, status, model, prompt_version, updated_at
     FROM ai_generations
     WHERE article_version_id = $1
-      AND COALESCE(sentence_id, 0) = COALESCE($2, 0)
+      AND COALESCE(sentence_id, 0) = COALESCE($2::BIGINT, 0)
       AND kind = $3
       AND language = $4
       AND prompt_version = $5
@@ -321,8 +321,10 @@ export async function upsertAiGeneration({
       status, model, prompt_version, content, error
     )
     VALUES (
-      $1, $2, $3,
-      CASE WHEN $3 IS NULL THEN 'article' ELSE 'sentence' END,
+      $1,
+      $2,
+      $3::BIGINT,
+      CASE WHEN $3::BIGINT IS NULL THEN 'article' ELSE 'sentence' END,
       $4, $5, $6, $7, $8, $9, $10
     )
     ON CONFLICT (article_version_id, COALESCE(sentence_id, 0), kind, language, prompt_version)
@@ -337,8 +339,30 @@ export async function upsertAiGeneration({
   return result.rows[0];
 }
 
-function normalizeSlug(value) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
+export function normalizeSlug(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120);
+}
+
+async function uniqueSlug(client, baseSlug, existingId = null) {
+  const base = normalizeSlug(baseSlug);
+  if (!base) throw new Error('Title must produce a valid slug.');
+  let candidate = base;
+  let suffix = 1;
+  while (true) {
+    const result = existingId == null
+      ? await client.query('SELECT 1 FROM articles WHERE slug = $1 LIMIT 1', [candidate])
+      : await client.query('SELECT 1 FROM articles WHERE slug = $1 AND id <> $2 LIMIT 1', [candidate, existingId]);
+    if (!result.rowCount) return candidate;
+    suffix += 1;
+    const suffixText = `-${suffix}`;
+    candidate = `${base.slice(0, Math.max(1, 120 - suffixText.length))}${suffixText}`;
+  }
 }
 
 export async function createArticle(input) {
@@ -352,8 +376,6 @@ export async function updateArticleBySlug(slug, input) {
 }
 
 async function saveArticle(existing, input) {
-  const slug = normalizeSlug(input.slug || existing?.slug);
-  if (!slug) throw new Error('A valid slug is required.');
   const title = String(input.title || '').trim();
   const subtitle = String(input.subtitle ?? input.dek ?? '').trim();
   const level = String(input.level || 'Upper intermediate').trim();
@@ -370,6 +392,7 @@ async function saveArticle(existing, input) {
   if (!paragraphs.length) throw new Error('At least one paragraph is required.');
 
   return withTransaction(async (client) => {
+    const slug = await uniqueSlug(client, title, existing?.id ?? null);
     const categorySlug = normalizeSlug(input.categorySlug || input.category || 'general') || 'general';
     const categoryName = String(input.categoryName || input.category || categorySlug).trim();
     const categoryResult = await client.query(`

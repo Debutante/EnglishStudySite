@@ -35,3 +35,16 @@ test('static serving rejects path traversal', async () => {
   const file = await serveStatic('/../../package.json');
   assert.equal(file, null);
 });
+
+
+test('article translation request does not require a sentence id', () => {
+  const request = normalizeAiRequest({
+    mode: 'article_translate',
+    articleId: '101',
+    articleSlug: 'sample-article',
+    selectedSentenceId: null,
+    articleText: 'Companies use software.'
+  });
+  assert.equal(request.selectedSentenceId, '');
+  assert.equal(request.mode, 'article_translate');
+});

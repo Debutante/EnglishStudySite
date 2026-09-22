@@ -168,7 +168,7 @@ async function handleAdmin(req, res, parts, url) {
     return json(res, 200, { categories: await listCategories() });
   }
 
-  if (parts[1] === 'admin' && parts[2] === 'articles' && parts[3]) {
+  if (parts[1] === 'admin' && parts[2] === 'articles' && parts[3] && !['publish', 'generate'].includes(parts[3])) {
     const slug = decodeURIComponent(parts[3]);
     if (req.method === 'GET' && parts.length === 4) {
       const article = await getAdminArticleBySlug(slug);
@@ -249,6 +249,10 @@ async function handleAdmin(req, res, parts, url) {
     const result = await createArticle(body);
     const article = await getAdminArticleBySlug(result.slug);
     return json(res, 201, { article });
+  }
+
+  if (req.method === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts[3] === 'publish' && parts.length === 4) {
+    return json(res, 400, { error: 'Save the draft before publishing it.' });
   }
 
   return json(res, 404, { error: 'Admin endpoint not found.' });
