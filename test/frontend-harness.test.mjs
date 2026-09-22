@@ -157,8 +157,8 @@ test('sentence playback pauses without resetting the dot/filled track and resume
 
   // A normal render while paused must keep exactly the same visual position.
   context.__renderNow();
-  assert.match(speechRoot.innerHTML, new RegExp(`audio-progress[^>]*style=\"width:${pausedWidth}`));
-  assert.match(speechRoot.innerHTML, new RegExp(`audio-progress-thumb[^>]*style=\"left:${pausedLeft}`));
+  assert.equal(Number.parseFloat(context.document.querySelector('.audio-progress').style.width), pausedWidth);
+  assert.equal(Number.parseFloat(context.document.querySelector('.audio-progress-thumb').style.left), pausedLeft);
 
   context.__setNow(5000);
   for (const cb of [...rafCallbacks.values()]) cb();

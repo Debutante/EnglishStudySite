@@ -418,7 +418,7 @@ export const server = http.createServer(async (req, res) => {
     const content = await fs.readFile(file);
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+      'Cache-Control': ['.html', '.js', '.css'].includes(ext) ? 'no-cache, no-store, must-revalidate' : 'public, max-age=3600',
     });
     if (req.method === 'HEAD') return res.end();
     res.end(content);

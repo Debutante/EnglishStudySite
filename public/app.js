@@ -54,6 +54,7 @@ const state = {
   activeNav: 'articles',
   speed: 1,
   speechToken: 0,
+  speechPhase: 'idle',
   speechPlaying: false,
   speechPaused: false,
   speechStartedAt: null,
@@ -291,26 +292,41 @@ function render() {
 function renderSpeechControl() {
   const host = document.querySelector('#speech-control');
   if (!host) return;
-  host.innerHTML = `
-    <div class="audio-bar">
-      <div class="audio-main">
-        <button class="audio-play" data-play aria-label="${t('listen')}" aria-pressed="${state.speechPlaying && !state.speechPaused ? 'true' : 'false'}">${state.speechPlaying && !state.speechPaused ? icon('pause') : icon('play')}</button>
-        <div class="audio-track">
-          <div class="audio-line">
-            <span class="audio-progress" style="width:${state.speechProgress * 100}%"></span>
-            <span class="audio-progress-thumb" style="left:${state.speechProgress * 100}%"></span>
+
+  // Mount the control only once. Replacing this DOM on every article render
+  // was the source of the visual reset: a rerender could recreate the track
+  // while speech was paused. Playback progress now lives in the controller
+  // state and this DOM stays mounted for the lifetime of the page.
+  if (!host.querySelector('.audio-bar')) {
+    host.innerHTML = `
+      <div class="audio-bar">
+        <div class="audio-main">
+          <button class="audio-play" data-play aria-label="${t('listen')}" aria-pressed="false">${icon('play')}</button>
+          <div class="audio-track">
+            <div class="audio-line">
+              <span class="audio-progress"></span>
+              <span class="audio-progress-thumb"></span>
+            </div>
+            <div class="audio-caption"><span data-speech-caption></span><span data-speech-language></span></div>
           </div>
-          <div class="audio-caption"><span>${state.selected ? escapeHtml(state.selected.text) : t('chooseSentence')}</span><span>${state.selected ? t('british') : '—'}</span></div>
         </div>
-      </div>
-      <div class="audio-controls">
-        <select data-speed aria-label="${t('playbackSpeed')}">${[0.75,1,1.25,1.5].map(v => `<option value="${v}" ${state.speed === v ? 'selected' : ''}>${v}×</option>`).join('')}</select>
-        <button class="audio-icon" data-next aria-label="${t('nextSentence')}">›</button>
-      </div>
-    </div>`;
-  host.querySelector('[data-play]')?.addEventListener('click', toggleSpeech);
-  host.querySelector('[data-next]')?.addEventListener('click', nextSentence);
-  host.querySelector('[data-speed]')?.addEventListener('change', (e) => { state.speed = Number(e.target.value); });
+        <div class="audio-controls">
+          <select data-speed aria-label="${t('playbackSpeed')}">${[0.75,1,1.25,1.5].map(v => `<option value="${v}" ${state.speed === v ? 'selected' : ''}>${v}×</option>`).join('')}</select>
+          <button class="audio-icon" data-next aria-label="${t('nextSentence')}">›</button>
+        </div>
+      </div>`;
+    host.querySelector('[data-play]')?.addEventListener('click', toggleSpeech);
+    host.querySelector('[data-next]')?.addEventListener('click', nextSentence);
+    host.querySelector('[data-speed]')?.addEventListener('change', (e) => { state.speed = Number(e.target.value); });
+  }
+
+  const caption = host.querySelector('[data-speech-caption]');
+  const language = host.querySelector('[data-speech-language]');
+  if (caption) caption.textContent = state.selected?.text || t('chooseSentence');
+  if (language) language.textContent = state.selected ? t('british') : '—';
+  const speed = host.querySelector('[data-speed]');
+  if (speed && Number(speed.value) !== state.speed) speed.value = String(state.speed);
+
   syncSpeechProgressVisuals();
   syncSpeechControlVisual();
 }
@@ -532,7 +548,7 @@ function syncSpeechProgressVisuals() {
 function syncSpeechControlVisual() {
   const button = document.querySelector('[data-play]');
   if (!button) return;
-  const active = state.speechPlaying && !state.speechPaused;
+  const active = state.speechPhase === 'playing';
   button.innerHTML = active ? icon('pause') : icon('play');
   button.setAttribute('aria-label', active ? t('pause') : t('listen'));
   button.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -540,6 +556,7 @@ function syncSpeechControlVisual() {
 
 function resetSpeechProgress() {
   stopSpeechTimer();
+  state.speechPhase = 'idle';
   state.speechPlaying = false;
   state.speechPaused = false;
   state.speechProgress = 0;
@@ -597,6 +614,7 @@ function pauseSpeech() {
   state.speechStartedAt = null;
   state.speechPlaying = false;
   state.speechPaused = true;
+  state.speechPhase = 'paused';
   stopSpeechTimer();
 
   // Invalidate the old utterance before canceling it. Some browsers fire
@@ -643,6 +661,7 @@ function speakSelectedFromOffset() {
   state.speechBoundaryChar = offset;
   state.speechPlaying = true;
   state.speechPaused = false;
+  state.speechPhase = 'playing';
 
   // Invalidate/cancel any stale utterance before speaking the resumed one.
   try { speechSynthesis.cancel(); } catch {}
@@ -672,6 +691,7 @@ function speakSelectedFromOffset() {
     if (token !== state.speechToken || state.speechPaused) return;
     state.speechPlaying = false;
     state.speechPaused = false;
+    state.speechPhase = 'ended';
     state.speechProgress = 1;
     state.speechElapsedMs = fullDuration;
     state.speechStartedAt = null;
@@ -686,6 +706,7 @@ function speakSelectedFromOffset() {
     if (token !== state.speechToken || state.speechPaused) return;
     state.speechPlaying = false;
     state.speechPaused = false;
+    state.speechPhase = 'idle';
     stopSpeechTimer();
     // Keep the last visible position on an engine error rather than jumping
     // back to the beginning.
@@ -717,6 +738,7 @@ function toggleSpeech() {
   }
 
   // A fresh Play starts at zero. Resume never reaches this branch.
+  state.speechPhase = 'idle';
   state.speechProgress = 0;
   state.speechElapsedMs = 0;
   state.speechStartedAt = null;
