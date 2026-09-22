@@ -30,8 +30,8 @@ const MOCK_SENTENCE_TRANSLATIONS = {
 
 const MOCKS = {
   explain: (sentence) => `这句话的核心意思是：${sentence.replace(/\.$/, '')}。先抓住主语和核心动词，再理解修饰信息。`,
-  chinese: (sentence) => `中文：${MOCK_SENTENCE_TRANSLATIONS[sentence] || `这句话可以自然理解为：${sentence.replace(/\.$/, '')}。`}`,
-  translate: (sentence) => `翻译：${MOCK_SENTENCE_TRANSLATIONS[sentence] || '在模拟模式下暂时无法提供这句话的精确译文；请启用真实 AI 服务。'}`,
+  chinese: (sentence) => `中文意思：${MOCK_SENTENCE_TRANSLATIONS[sentence] || '这句话的核心意思需要结合上下文理解；当前处于模拟 AI 模式。'}`,
+  translate: (sentence) => `中文翻译：${MOCK_SENTENCE_TRANSLATIONS[sentence] || '当前处于模拟 AI 模式，未找到这句话的预置译文；请启用真实 AI 服务以获得准确翻译。'}`,
   grammar: () => '语法提示：先找出主语和谓语，再判断后面的从句、分词结构或介词短语分别修饰什么。这样可以更容易看清句子的主干。',
   vocabulary: (sentence) => `重点词汇\n• demand — 需求，指市场或用户所需要的数量。\n• expected to — 预计、被认为会。\n• reshape — 重新塑造、明显改变。\n\n本句：${sentence}`,
   simplify: (sentence) => `Simpler English: ${sentence.replace(/\b(expected to|increasingly|significantly)\b/gi, 'will').replace(/\s+/g, ' ')}`,
@@ -89,7 +89,7 @@ function mockArticleTranslation(request) {
   if (request.articleSlug && MOCK_ARTICLE_TRANSLATIONS[request.articleSlug]) {
     return { answer: MOCK_ARTICLE_TRANSLATIONS[request.articleSlug].join('\n\n') };
   }
-  return { answer: request.articleText.split(/\n\n+/).map((paragraph) => `【中文翻译】${paragraph}`).join('\n\n') };
+  return { answer: request.articleText.split(/\n\n+/).map((paragraph) => `当前处于模拟 AI 模式，无法对未预置文章执行准确中文翻译。原文段落：${paragraph}`).join('\n\n') };
 }
 
 export function mockAnswer(request) {
@@ -167,7 +167,7 @@ export async function aiResponse(body, env = process.env) {
   return provider === 'openai' ? callOpenAI(request, env) : mockAnswer(request);
 }
 
-export function generateEditorialCoverSvg({ title, subtitle = '', category = 'Technology', tags = [] } = {}) {
+export function generateEditorialCoverSvg({ title, subtitle = '', category = 'Technology', tags = [], content = '' } = {}) {
   const palette = {
     Technology: ['#0f5f61', '#dcefed'],
     Business: ['#32465f', '#e7ebf2'],
@@ -187,7 +187,11 @@ export function generateEditorialCoverSvg({ title, subtitle = '', category = 'Te
   }
   if (line) lines.push(line);
   const titleLines = lines.slice(0, 4);
-  const tagLine = (tags || []).slice(0, 3).join('  •  ');
+  const stop = new Set(['the','and','that','this','with','from','into','their','there','which','where','what','when','than','have','will','would','could','should','about','after','before','because','while','these','those','only','more','less','over','under','into','your','they','them','then','also']);
+  const keywordCounts = new Map();
+  `${title} ${subtitle} ${content}`.toLowerCase().match(/[a-z][a-z'-]{3,}/g)?.forEach(word => { if (!stop.has(word)) keywordCounts.set(word, (keywordCounts.get(word) || 0) + 1); });
+  const contentKeywords = [...keywordCounts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([word])=>word);
+  const tagLine = [...new Set([...(tags || []), ...contentKeywords])].slice(0, 4).join('  •  ');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-label="${esc(title)}">
     <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${accent}"/><stop offset="1" stop-color="#17201f"/></linearGradient></defs>
     <rect width="1200" height="700" fill="${soft}"/>

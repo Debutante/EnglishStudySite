@@ -43,6 +43,7 @@ await loadDotEnv();
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -85,6 +86,23 @@ function getAdminKey(req) {
   const header = req.headers.authorization || '';
   if (header.toLowerCase().startsWith('bearer ')) return header.slice(7).trim();
   return String(req.headers['x-admin-key'] || '').trim();
+}
+
+export function resolveAdminEndpoint(method, parts) {
+  const m = String(method || '').toUpperCase();
+  if (m === 'GET' && parts[1] === 'admin' && parts[2] === 'articles' && parts.length === 3) return 'list-articles';
+  if (m === 'GET' && parts[1] === 'admin' && parts[2] === 'categories' && parts.length === 3) return 'list-categories';
+  if (m === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts.length === 3) return 'create-article';
+  if (m === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts[3] === 'save' && parts.length === 4) return 'create-article';
+  if (parts[1] !== 'admin' || parts[2] !== 'articles' || !parts[3]) return null;
+  if (parts[3] === 'save' || parts[3] === 'publish' || parts[3] === 'generate') return null;
+  if (m === 'GET' && parts.length === 4) return 'get-article';
+  if ((m === 'PATCH' || m === 'POST') && parts.length === 4) return 'save-article';
+  if (m === 'POST' && parts[4] === 'save' && parts.length === 5) return 'save-article';
+  if (m === 'POST' && parts[4] === 'publish' && parts.length === 5) return 'publish-article';
+  if (m === 'POST' && parts[4] === 'generate-cover' && parts.length === 5) return 'generate-cover';
+  if (m === 'POST' && parts[4] === 'generate' && parts.length === 5) return 'generate-ai';
+  return null;
 }
 
 function requireAdmin(req, res) {
@@ -165,6 +183,7 @@ async function ensureGeneratedCover(article) {
     subtitle: article.dek,
     category: article.category,
     tags: article.tags,
+    content: articleToText(article),
   });
   const coverDir = path.join(process.cwd(), 'public', 'generated-covers');
   await fs.mkdir(coverDir, { recursive: true });
@@ -180,6 +199,7 @@ async function generateCover(article, { force = true } = {}) {
     subtitle: article.dek,
     category: article.category,
     tags: article.tags,
+    content: articleToText(article),
   });
   const coverDir = path.join(process.cwd(), 'public', 'generated-covers');
   await fs.mkdir(coverDir, { recursive: true });
@@ -200,7 +220,15 @@ async function handleAdmin(req, res, parts, url) {
     return json(res, 200, { categories: await listCategories() });
   }
 
-  if (parts[1] === 'admin' && parts[2] === 'articles' && parts[3] && !['publish', 'generate'].includes(parts[3])) {
+  if (req.method === 'POST' && parts[1] === 'admin' && parts[2] === 'articles' && parts[3] === 'save' && parts.length === 4) {
+    const body = await readJsonBody(req);
+    const result = await createArticle(body);
+    let article = await getAdminArticleBySlug(result.slug);
+    article = await ensureGeneratedCover(article);
+    return json(res, 201, { article });
+  }
+
+  if (parts[1] === 'admin' && parts[2] === 'articles' && parts[3] && !['publish', 'generate', 'save'].includes(parts[3])) {
     const slug = decodeURIComponent(parts[3]);
     if (req.method === 'GET' && parts.length === 4) {
       const article = await getAdminArticleBySlug(slug);
@@ -208,7 +236,16 @@ async function handleAdmin(req, res, parts, url) {
       return json(res, 200, { article });
     }
 
-    if (req.method === 'PATCH' && parts.length === 4) {
+    if ((req.method === 'PATCH' || req.method === 'POST') && parts.length === 4) {
+      const body = await readJsonBody(req);
+      const result = await updateArticleBySlug(slug, body);
+      if (!result) return json(res, 404, { error: 'Article not found.' });
+      let article = await getAdminArticleBySlug(result.slug);
+      article = await ensureGeneratedCover(article);
+      return json(res, 200, { article });
+    }
+
+    if (req.method === 'POST' && parts[4] === 'save' && parts.length === 5) {
       const body = await readJsonBody(req);
       const result = await updateArticleBySlug(slug, body);
       if (!result) return json(res, 404, { error: 'Article not found.' });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatArticleSummary, formatSentence, normalizeSlug } from '../db/postgres.mjs';
-import { parseApiPath } from '../server.mjs';
+import { parseApiPath, resolveAdminEndpoint } from '../server.mjs';
 import { normalizeAiRequest, mockAnswer } from '../server-core.mjs';
 
 const sampleArticleRow = {
@@ -81,6 +81,12 @@ test('mock article translation returns paragraph-separated Chinese output', () =
   assert.match(result.answer, /Teams redesign workflows/);
 });
 
+test('admin model ES module is served with JavaScript MIME type', async () => {
+  const { serveStatic } = await import('../server-core.mjs');
+  const file = await serveStatic('/admin-model.mjs');
+  assert.match(file, /admin-model\.mjs$/);
+});
+
 test('admin page is directly servable', async () => {
   const { serveStatic } = await import('../server-core.mjs');
   const file = await serveStatic('/admin.html');
@@ -92,4 +98,15 @@ test('auto-generates URL-safe slugs from titles, including Unicode', () => {
   assert.equal(normalizeSlug('The New Geography of Remote Work'), 'the-new-geography-of-remote-work');
   assert.equal(normalizeSlug('人工智能改变城市'), '人工智能改变城市');
   assert.equal(normalizeSlug('The New Geography of Remote Work'), 'the-new-geography-of-remote-work');
+});
+
+
+test('admin endpoint resolver covers draft save, update, publish and AI generation paths', () => {
+  assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles']), 'create-article');
+  assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles','save']), 'create-article');
+  assert.equal(resolveAdminEndpoint('PATCH', ['api','admin','articles','the-new-article']), 'save-article');
+  assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles','the-new-article','save']), 'save-article');
+  assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles','the-new-article','publish']), 'publish-article');
+  assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles','the-new-article','generate-cover']), 'generate-cover');
+  assert.equal(resolveAdminEndpoint('POST', ['api','admin','articles','the-new-article','generate']), 'generate-ai');
 });

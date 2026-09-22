@@ -192,3 +192,18 @@ npm run db:migrate
 ```
 
 New articles without a cover URL automatically receive a content-derived cover after saving. Existing articles can use the **根据文章生成封面** button in the CMS to regenerate one.
+
+## Verification
+
+The current build includes regression coverage for the CMS draft-save payload, `Other` categories, automatic slugs, content-derived covers, all six sentence AI actions, the global `中文 / EN` switch, the AI assistant close control, the moving sentence-progress dot, translation-cache SQL typing, and all admin save/publish/generation endpoint shapes.
+
+Run:
+
+```bash
+npm test
+npm run check
+```
+
+The learner UI uses Simplified Chinese as the default UI language. Switching to `EN` changes the UI labels and article chrome to English; switching to `中文` changes the UI labels back to Simplified Chinese and loads the cached/generated Chinese article passage.
+
+For real translations and sentence generation, set `AI_PROVIDER=openai` and provide `OPENAI_API_KEY`. Mock mode is intended to verify the UI flow without an API key; seeded demo sentences have deterministic mock learning results.
